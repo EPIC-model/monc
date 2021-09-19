@@ -306,8 +306,6 @@ contains
          current_state%local_grid, current_state%parallel%my_rank, involve_corners)
     if (halo_state%number_distinct_neighbours .gt. 0) then
       allocate(halo_state%halo_swap_neighbours(halo_state%number_distinct_neighbours))
-      !halo_state%halo_swap_neighbours = populate_halo_swap_neighbours(current_state%local_grid, &
-      !     current_state%parallel%my_rank, halo_state%number_distinct_neighbours, involve_corners)
       call populate_halo_swap_neighbours(current_state%local_grid, &
               current_state%parallel%my_rank, halo_state%number_distinct_neighbours, &
               involve_corners, halo_state)
@@ -657,8 +655,6 @@ contains
     logical, intent(in) :: involve_corners
     type(halo_communication_type), intent(inout) :: halo_swap_state
 
-    !type(neighbour_description_type), dimension(number_distinct_neighbours) :: &
-    !     populate_halo_swap_neighbours
     integer :: i, j, current_pid_location, temp_neighbour_pids(merge(16, 8, involve_corners))
 
     current_pid_location=0
@@ -669,10 +665,9 @@ contains
              has_pid_already_been_seen(temp_neighbour_pids, &
              local_grid%neighbours(i,j))) then
           current_pid_location=current_pid_location+1
-          !populate_halo_swap_neighbours(current_pid_location)%pid=local_grid%neighbours(i,j)
+
           halo_swap_state%halo_swap_neighbours(current_pid_location)%pid=local_grid%neighbours(i,j)
           temp_neighbour_pids(current_pid_location)=local_grid%neighbours(i,j)
-          !populate_halo_swap_neighbours(current_pid_location)%dimension=i
           halo_swap_state%halo_swap_neighbours(current_pid_location)%dimension=i
         end if
       end do
@@ -685,11 +680,9 @@ contains
                has_pid_already_been_seen(temp_neighbour_pids, &
                local_grid%corner_neighbours(j,i))) then
             current_pid_location=current_pid_location+1
-            !populate_halo_swap_neighbours(current_pid_location)%pid = &
             halo_swap_state%halo_swap_neighbours(current_pid_location)%pid = &
                  local_grid%corner_neighbours(j,i)
             temp_neighbour_pids(current_pid_location)=local_grid%corner_neighbours(j,i)
-            !populate_halo_swap_neighbours(current_pid_location)%dimension=0
             halo_swap_state%halo_swap_neighbours(current_pid_location)%dimension=0
           end if
         end do
@@ -772,6 +765,19 @@ contains
          halo_swap_neighbours
 
     integer :: i
+
+    !! AH - test code to see if this corrects the allocation error on restart with gcc 7
+    !! do i=1,number_distinct_neighbours
+    !!   if (allocated(halo_swap_neighbours(i)%send_halo_buffer)) &
+    !!       deallocate(halo_swap_neighbours(i)%send_halo_buffer)
+    !!   if (allocated(halo_swap_neighbours(i)%recv_halo_buffer)) &
+    !!        deallocate(halo_swap_neighbours(i)%recv_halo_buffer)
+    !!   if (allocated(halo_swap_neighbours(i)%send_corner_buffer)) &
+    !!       deallocate(halo_swap_neighbours(i)%send_corner_buffer)
+    !!   if (allocated(halo_swap_neighbours(i)%recv_corner_buffer)) &
+    !!       deallocate(halo_swap_neighbours(i)%recv_corner_buffer)
+    !! end do
+    !!
 
     do i=1,number_distinct_neighbours
       if (halo_swap_neighbours(i)%halo_pages .gt. 0) then

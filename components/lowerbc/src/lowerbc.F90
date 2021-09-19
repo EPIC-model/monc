@@ -3,11 +3,12 @@ module lowerbc_mod
   use monc_component_mod, only : component_descriptor_type
   use state_mod, only : FORWARD_STEPPING, PRESCRIBED_SURFACE_FLUXES, PRESCRIBED_SURFACE_VALUES, &
    model_state_type
+  use tracers_mod, only : TRACER_SURFACE_FLUX_FROM_DECAY, TRACER_SURFACE_FLUX_SPECIFIED, TRACER_SURFACE_VALUE_SPECIFIED
   use grids_mod, only : Z_INDEX, Y_INDEX, X_INDEX, vertical_grid_configuration_type
   use datadefn_mod, only : DEFAULT_PRECISION, PRECISION_TYPE
   use prognostics_mod, only : prognostic_field_type
   use science_constants_mod, only : von_karman_constant, smallp, alphah, betah, betam, pi, &
-       z0, z0th, convective_limit, gammah, gammam
+       z0, z0th, convective_limit, gammah, gammam, G
   use logging_mod, only : LOG_ERROR, LOG_WARN, log_log
   use registry_mod, only : is_component_enabled
   use logging_mod, only : LOG_ERROR, log_master_log
@@ -71,6 +72,7 @@ contains
     num_wrapped_fields=0
     if (current_state%th%active) num_wrapped_fields=1
     num_wrapped_fields=num_wrapped_fields+current_state%number_q_fields
+    num_wrapped_fields=num_wrapped_fields+current_state%n_tracers
 
     if (num_wrapped_fields .gt. 0) then
       if (current_state%parallel%my_coords(Y_INDEX) == 0  .or. &
@@ -183,22 +185,27 @@ contains
 
     if (current_state%field_stepping == FORWARD_STEPPING) then
       call compute_lower_boundary_conditions(current_state, current_y_index, current_x_index, &
-           current_state%u, current_state%v, current_state%th, current_state%th, current_state%q, current_state%q)
+           current_state%u, current_state%v, current_state%th, current_state%th, current_state%q, current_state%q, &
+           current_state%tracer, current_state%tracer)
     else
       if (current_state%scalar_stepping == FORWARD_STEPPING) then
         call compute_lower_boundary_conditions(current_state, current_y_index, current_x_index, &
-           current_state%zu, current_state%zv, current_state%th, current_state%zth, current_state%q, current_state%zq)
+           current_state%zu, current_state%zv, current_state%th, current_state%zth, current_state%q, current_state%zq, &
+           current_state%tracer, current_state%ztracer)
       else
         call compute_lower_boundary_conditions(current_state, current_y_index, current_x_index, &
-           current_state%zu, current_state%zv, current_state%zth, current_state%zth, current_state%zq, current_state%zq)
+           current_state%zu, current_state%zv, current_state%zth, current_state%zth, current_state%zq, current_state%zq, &
+           current_state%ztracer, current_state%ztracer)
       end if
     end if
   end subroutine timestep_callback
 
-  subroutine compute_lower_boundary_conditions(current_state, current_y_index, current_x_index, zu, zv, zth, th, zq, q)
+  subroutine compute_lower_boundary_conditions(current_state, current_y_index, current_x_index, &
+      zu, zv, zth, th, zq, q, ztracer, tracer)
     type(model_state_type), target, intent(inout) :: current_state
     type(prognostic_field_type), intent(inout) :: zu, zv, th, zth
     type(prognostic_field_type), dimension(:), intent(inout) :: q, zq
+    type(prognostic_field_type), dimension(:), intent(inout) :: tracer, ztracer
     integer, intent(in) :: current_y_index, current_x_index
 
     integer :: n
@@ -235,6 +242,10 @@ contains
                horizontal_velocity_at_k2, zth, th, zq, q)
          end if
 
+         if (current_state%n_tracers .gt. 0) then
+           call compute_tracer_lower_boundary_conditions(current_state, current_y_index, current_x_index, ztracer, tracer)
+         end if
+
          current_state%dis%data(1, current_y_index, current_x_index)=0.0_DEFAULT_PRECISION
          current_state%dis_th%data(1, current_y_index, current_x_index)=0.0_DEFAULT_PRECISION
 
@@ -256,7 +267,7 @@ contains
      else if (current_x_index == current_state%local_grid%local_domain_end_index(X_INDEX)+&
              current_state%local_grid%halo_size(X_INDEX) .and. current_y_index == &
              current_state%local_grid%local_domain_end_index(Y_INDEX)+current_state%local_grid%halo_size(Y_INDEX)) then
-        call complete_async_wrapping(current_state, zth, zq)
+        call complete_async_wrapping(current_state, zth, zq, ztracer)
      end if
   end if
   end subroutine compute_lower_boundary_conditions
@@ -282,21 +293,24 @@ contains
   !! @param current_state The current model state
   !! @param zth Temperature field
   !! @param zq Q fields
-  subroutine complete_async_wrapping(current_state, zth, zq)
+  subroutine complete_async_wrapping(current_state, zth, zq, ztracer)
     type(model_state_type), target, intent(inout) :: current_state
     type(prognostic_field_type), intent(inout) :: zth
     type(prognostic_field_type), dimension(:), intent(inout) :: zq
+    type(prognostic_field_type), dimension(:), intent(inout) :: ztracer
 
     integer :: ierr, n
 
     if (allocated(x_wrapping_send_buffer) .or. allocated(y_wrapping_send_buffer)) then
       if (allocated(y_wrapping_send_buffer)) then
         if (current_state%parallel%my_coords(Y_INDEX) == 0) then
-          call package_y_wrapping_send_buffer(current_state, zth, zq, current_state%local_grid%local_domain_start_index(Y_INDEX),&
-               current_state%local_grid%local_domain_start_index(Y_INDEX)+1)
+          call package_y_wrapping_send_buffer(current_state, zth, zq, ztracer,                              &
+                                              current_state%local_grid%local_domain_start_index(Y_INDEX),   &
+                                              current_state%local_grid%local_domain_start_index(Y_INDEX)+1)
         else
-          call package_y_wrapping_send_buffer(current_state, zth, zq, current_state%local_grid%local_domain_end_index(Y_INDEX)-1,&
-               current_state%local_grid%local_domain_end_index(Y_INDEX))
+          call package_y_wrapping_send_buffer(current_state, zth, zq, ztracer,                              &
+                                              current_state%local_grid%local_domain_end_index(Y_INDEX)-1,   &
+                                              current_state%local_grid%local_domain_end_index(Y_INDEX))
         end if
         call mpi_isend(y_wrapping_send_buffer, size(y_wrapping_send_buffer), PRECISION_TYPE, &
              y_wrapping_target_id, 0, current_state%parallel%neighbour_comm, &
@@ -304,11 +318,13 @@ contains
       end if
       if (allocated(x_wrapping_send_buffer)) then
         if (current_state%parallel%my_coords(X_INDEX) == 0) then
-          call package_x_wrapping_send_buffer(current_state, zth, zq, current_state%local_grid%local_domain_start_index(X_INDEX),&
-               current_state%local_grid%local_domain_start_index(X_INDEX)+1)
+          call package_x_wrapping_send_buffer(current_state, zth, zq, ztracer,                              &
+                                              current_state%local_grid%local_domain_start_index(X_INDEX),   &
+                                              current_state%local_grid%local_domain_start_index(X_INDEX)+1)
         else
-          call package_x_wrapping_send_buffer(current_state, zth, zq, current_state%local_grid%local_domain_end_index(X_INDEX)-1,&
-               current_state%local_grid%local_domain_end_index(X_INDEX))
+          call package_x_wrapping_send_buffer(current_state, zth, zq, ztracer,                              &
+                                              current_state%local_grid%local_domain_end_index(X_INDEX)-1,   &
+                                              current_state%local_grid%local_domain_end_index(X_INDEX))
         end if
         call mpi_isend(x_wrapping_send_buffer, size(x_wrapping_send_buffer), PRECISION_TYPE, &
              x_wrapping_target_id, 0, current_state%parallel%neighbour_comm, &
@@ -320,18 +336,18 @@ contains
       wrapping_comm_requests=MPI_REQUEST_NULL
       if (allocated(y_wrapping_recv_buffer)) then
         if (current_state%parallel%my_coords(Y_INDEX) == 0) then
-          call unpackage_y_wrapping_recv_buffer(current_state, zth, zq, 1, 2)
+          call unpackage_y_wrapping_recv_buffer(current_state, zth, zq, ztracer, 1, 2)
         else
-          call unpackage_y_wrapping_recv_buffer(current_state, zth, zq, &
+          call unpackage_y_wrapping_recv_buffer(current_state, zth, zq, ztracer, &
                current_state%local_grid%local_domain_end_index(Y_INDEX)+1, &
                current_state%local_grid%local_domain_end_index(Y_INDEX)+2)
         end if
       end if
       if (allocated(x_wrapping_recv_buffer)) then
         if (current_state%parallel%my_coords(X_INDEX) == 0) then
-          call unpackage_x_wrapping_recv_buffer(current_state, zth, zq, 1, 2)
+          call unpackage_x_wrapping_recv_buffer(current_state, zth, zq, ztracer, 1, 2)
         else
-          call unpackage_x_wrapping_recv_buffer(current_state, zth, zq, &
+          call unpackage_x_wrapping_recv_buffer(current_state, zth, zq, ztracer, &
                current_state%local_grid%local_domain_end_index(X_INDEX)+1, &
                current_state%local_grid%local_domain_end_index(X_INDEX)+2)
         end if
@@ -356,6 +372,16 @@ contains
              zq(n)%data(1, current_state%local_grid%local_domain_start_index(Y_INDEX)+1, :)
         end do
       end if
+      if (current_state%n_tracers .gt. 0) then
+        do n=1, current_state%n_tracers
+          ztracer(n)%data(1,1,:)=ztracer(n)%data(1, current_state%local_grid%local_domain_end_index(Y_INDEX)-1, :)
+          ztracer(n)%data(1,2,:)=ztracer(n)%data(1, current_state%local_grid%local_domain_end_index(Y_INDEX), :)
+          ztracer(n)%data(1,current_state%local_grid%local_domain_end_index(Y_INDEX)+1,:)=&
+             ztracer(n)%data(1, current_state%local_grid%local_domain_start_index(Y_INDEX), :)
+          ztracer(n)%data(1,current_state%local_grid%local_domain_end_index(Y_INDEX)+2,:)=&
+             ztracer(n)%data(1, current_state%local_grid%local_domain_start_index(Y_INDEX)+1, :)
+        end do
+      end if
     end if
 
     if (current_state%parallel%my_rank == x_wrapping_target_id) then
@@ -377,19 +403,31 @@ contains
                zq(n)%data(1,:,current_state%local_grid%local_domain_start_index(X_INDEX)+1)
         end do
       end if
+      if (current_state%n_tracers .gt. 0) then
+        do n=1, current_state%n_tracers
+          ztracer(n)%data(1,:,1)=ztracer(n)%data(1,:,current_state%local_grid%local_domain_end_index(X_INDEX)-1)
+          ztracer(n)%data(1,:,2)=ztracer(n)%data(1,:,current_state%local_grid%local_domain_end_index(X_INDEX))
+          ztracer(n)%data(1,:,current_state%local_grid%local_domain_end_index(X_INDEX)+1)=&
+               ztracer(n)%data(1,:,current_state%local_grid%local_domain_start_index(X_INDEX))
+          ztracer(n)%data(1,:,current_state%local_grid%local_domain_end_index(X_INDEX)+2)=&
+               ztracer(n)%data(1,:,current_state%local_grid%local_domain_start_index(X_INDEX)+1)
+        end do
+      end if
     end if
   end subroutine complete_async_wrapping
 
-  !> Packages theta and Q fields (if enabled) into the send buffer for Y
+  !> Packages theta, Q fields and tracer fields (if enabled) into the send buffer for Y
   !! @param current_state The current model state
   !! @param zth Temperature field
   !! @param zq Q fields
+  !! @param ztracer tracer fields
   !! @param first_y_index The first Y index to read from the data field
   !! @param second_y_index The second Y index to read from the data field
-  subroutine package_y_wrapping_send_buffer(current_state, zth, zq, first_y_index, second_y_index)
+  subroutine package_y_wrapping_send_buffer(current_state, zth, zq, ztracer, first_y_index, second_y_index)
     type(model_state_type), target, intent(inout) :: current_state
     type(prognostic_field_type), intent(inout) :: zth
     type(prognostic_field_type), dimension(:), intent(inout) :: zq
+    type(prognostic_field_type), dimension(:), intent(inout) :: ztracer
     integer, intent(in) :: first_y_index, second_y_index
 
     integer :: index_start, n
@@ -406,18 +444,26 @@ contains
         y_wrapping_send_buffer(:,2,index_start+n)=zq(n)%data(1,second_y_index,:)
       end do
     end if
+    if (current_state%n_tracers .gt. 0) then
+      do n=1, current_state%n_tracers
+        y_wrapping_send_buffer(:,1,index_start+n)=ztracer(n)%data(1,first_y_index,:)
+        y_wrapping_send_buffer(:,2,index_start+n)=ztracer(n)%data(1,second_y_index,:)
+      end do
+    end if
   end subroutine package_y_wrapping_send_buffer
 
   !> Packages theta and Q fields (if enabled) into the send buffer for X
   !! @param current_state The current model state
   !! @param zth Temperature field
   !! @param zq Q fields
+  !! @param ztracer tracer fields
   !! @param first_x_index The first X index to read from the data field
   !! @param second_x_index The second X index to read from the data field
-  subroutine package_x_wrapping_send_buffer(current_state, zth, zq, first_x_index, second_x_index)
+  subroutine package_x_wrapping_send_buffer(current_state, zth, zq, ztracer, first_x_index, second_x_index)
     type(model_state_type), target, intent(inout) :: current_state
     type(prognostic_field_type), intent(inout) :: zth
     type(prognostic_field_type), dimension(:), intent(inout) :: zq
+    type(prognostic_field_type), dimension(:), intent(inout) :: ztracer
     integer, intent(in) :: first_x_index, second_x_index
 
     integer :: index_start, n
@@ -434,18 +480,26 @@ contains
         x_wrapping_send_buffer(:,2,index_start+n)= zq(n)%data(1,:,second_x_index)
       end do
     end if
+    if (current_state%n_tracers .gt. 0) then
+      do n=1, current_state%n_tracers
+        x_wrapping_send_buffer(:,1,index_start+n)= ztracer(n)%data(1,:,first_x_index)
+        x_wrapping_send_buffer(:,2,index_start+n)= ztracer(n)%data(1,:,second_x_index)
+      end do
+    end if
   end subroutine package_x_wrapping_send_buffer
 
   !> Unpackages theta and Q fields from the receive buffer into the fields themselves (if enabled) for Y
   !! @param current_state The current model state
   !! @param zth Temperature field
   !! @param zq Q fields
+  !! @param ztracer tracer fields
   !! @param first_y_index The first Y index to read from the data field
   !! @param second_y_index The second Y index to read from the data field
-  subroutine unpackage_y_wrapping_recv_buffer(current_state, zth, zq, first_y_index, second_y_index)
+  subroutine unpackage_y_wrapping_recv_buffer(current_state, zth, zq, ztracer, first_y_index, second_y_index)
     type(model_state_type), target, intent(inout) :: current_state
     type(prognostic_field_type), intent(inout) :: zth
     type(prognostic_field_type), dimension(:), intent(inout) :: zq
+    type(prognostic_field_type), dimension(:), intent(inout) :: ztracer
     integer, intent(in) :: first_y_index, second_y_index
 
     integer :: index_start, n
@@ -462,18 +516,26 @@ contains
         zq(n)%data(1,second_y_index,:)=y_wrapping_recv_buffer(:,2,index_start+n)
       end do
     end if
+    if (current_state%n_tracers .gt. 0) then
+      do n=1, current_state%n_tracers
+        ztracer(n)%data(1,first_y_index,:)=y_wrapping_recv_buffer(:,1,index_start+n)
+        ztracer(n)%data(1,second_y_index,:)=y_wrapping_recv_buffer(:,2,index_start+n)
+      end do
+    end if
   end subroutine unpackage_y_wrapping_recv_buffer
 
   !> Unpackages theta and Q fields from the receive buffer into the fields themselves (if enabled) for X
   !! @param current_state The current model state
   !! @param zth Temperature field
   !! @param zq Q fields
+  !! @param ztracer tracer fields
   !! @param first_x_index The first X index to read from the data field
   !! @param second_x_index The second X index to read from the data field
-  subroutine unpackage_x_wrapping_recv_buffer(current_state, zth, zq, first_x_index, second_x_index)
+  subroutine unpackage_x_wrapping_recv_buffer(current_state, zth, zq, ztracer, first_x_index, second_x_index)
     type(model_state_type), target, intent(inout) :: current_state
     type(prognostic_field_type), intent(inout) :: zth
     type(prognostic_field_type), dimension(:), intent(inout) :: zq
+    type(prognostic_field_type), dimension(:), intent(inout) :: ztracer
     integer, intent(in) :: first_x_index, second_x_index
 
     integer :: index_start, n
@@ -490,6 +552,12 @@ contains
         zq(n)%data(1,:,second_x_index)=x_wrapping_recv_buffer(:,2,index_start+n)
       end do
     end if
+    if (current_state%n_tracers .gt. 0) then
+      do n=1, current_state%n_tracers
+        ztracer(n)%data(1,:,first_x_index)=x_wrapping_recv_buffer(:,1,index_start+n)
+        ztracer(n)%data(1,:,second_x_index)=x_wrapping_recv_buffer(:,2,index_start+n)
+      end do
+    end if
   end subroutine unpackage_x_wrapping_recv_buffer
 
   subroutine handle_convective_fluxes(current_state, current_y_index, current_x_index, horizontal_velocity_at_k2, th, q)
@@ -499,8 +567,8 @@ contains
     integer, intent(in) :: current_y_index, current_x_index
     real(kind=DEFAULT_PRECISION), intent(in) :: horizontal_velocity_at_k2
 
-    integer :: n
     real(kind=DEFAULT_PRECISION) :: ustr
+    integer :: n
 
     ustr=look(current_state, horizontal_velocity_at_k2)
 
@@ -524,6 +592,7 @@ contains
             current_state%surface_vapour_flux*current_state%global_grid%configuration%vertical%dzn(2)/&
             current_state%diff_coefficient%data(1, current_y_index, current_x_index)
     endif
+
   end subroutine handle_convective_fluxes
 
   real(kind=DEFAULT_PRECISION) function look(current_state, vel)
@@ -558,8 +627,8 @@ contains
     integer, intent(in) :: current_y_index, current_x_index
     real(kind=DEFAULT_PRECISION) :: horizontal_velocity_at_k2
 
-    integer :: n
     real(kind=DEFAULT_PRECISION) :: ustr
+    integer :: n
 
     ustr=horizontal_velocity_at_k2*current_state%global_grid%configuration%vertical%vk_on_zlogm
     current_state%vis_coefficient%data(1, current_y_index, current_x_index)=current_state%global_grid%configuration%vertical%czn*&
@@ -580,6 +649,7 @@ contains
             current_state%surface_vapour_flux*current_state%global_grid%configuration%vertical%dzn(2)/&
             current_state%diff_coefficient%data(1, current_y_index, current_x_index)
     endif
+
   end subroutine handle_neutral_fluxes
 
   subroutine handle_stable_fluxes(current_state, current_y_index, current_x_index, horizontal_velocity_at_k2, th, q)
@@ -636,7 +706,8 @@ contains
   end subroutine handle_stable_fluxes
 
   ! set surface_boundary_flux in init == FBUOY
-  subroutine compute_using_fixed_surface_fluxes(current_state, current_y_index, current_x_index, horizontal_velocity_at_k2, th, q)
+  subroutine compute_using_fixed_surface_fluxes(current_state, current_y_index, current_x_index, horizontal_velocity_at_k2, &
+    th, q)
     type(model_state_type), target, intent(inout) :: current_state
     type(prognostic_field_type), intent(inout) :: th
     type(prognostic_field_type), dimension(:), intent(inout) :: q
@@ -651,7 +722,6 @@ contains
       call handle_stable_fluxes(current_state, current_y_index, current_x_index, horizontal_velocity_at_k2, th, q)
     end if
   end subroutine compute_using_fixed_surface_fluxes
-
 
   subroutine compute_using_fixed_surface_temperature(current_state, current_y_index, current_x_index, horizontal_velocity_at_k2, &
        zth, th, zq, q)
@@ -724,6 +794,75 @@ contains
       end do
     end if
   end subroutine simple_boundary_values
+
+  subroutine compute_tracer_lower_boundary_conditions(current_state, current_y_index, current_x_index, ztracer, tracer)
+    type(model_state_type), target, intent(inout) :: current_state
+    type(prognostic_field_type), dimension(:), intent(inout) :: tracer, ztracer
+    integer, intent(in) :: current_y_index, current_x_index
+
+    real(kind=DEFAULT_PRECISION) :: surface_tracer_flux
+    REAL(kind=DEFAULT_PRECISION), PARAMETER :: sec_in_hour=3600.0
+    REAL, PARAMETER :: SMALL = 1.E-18
+
+    integer :: n,i
+
+    ! Surface Flux of trajectory tracers = 0
+    if (current_state%traj_tracer_index .gt. 0) then
+      do n=1, 5
+        i = n + current_state%traj_tracer_index - 1
+        tracer(i)%data(1, current_y_index, current_x_index)=tracer(i)%data(2, current_y_index, current_x_index)
+      end do
+    end if
+
+    ! Surface Flux of radioactive tracers
+    if (current_state%n_radioactive_tracers .gt. 0) then
+
+      if ( ABS(current_state%diff_coefficient%data(1, current_y_index, current_x_index)) .gt. SMALL) then
+
+        do n = 1, current_state%n_radioactive_tracers
+          i = n + current_state%radioactive_tracer_index - 1
+
+          if (current_state%tracer_surf_bc_opt(n) == TRACER_SURFACE_FLUX_FROM_DECAY) then
+
+            surface_tracer_flux = current_state%tracer_decay_rate(n) * &
+              current_state%surface_pressure/(G * sec_in_hour)
+
+            tracer(i)%data(1, current_y_index, current_x_index)=tracer(i)%data(2, current_y_index, current_x_index) + &
+              surface_tracer_flux*current_state%global_grid%configuration%vertical%dzn(2)/&
+              current_state%diff_coefficient%data(1, current_y_index, current_x_index)
+
+          else if (current_state%tracer_surf_bc_opt(n) == TRACER_SURFACE_FLUX_SPECIFIED) then
+
+            surface_tracer_flux = current_state%tracer_surf_bc(n)
+
+            tracer(i)%data(1, current_y_index, current_x_index)=tracer(i)%data(2, current_y_index, current_x_index) + &
+              surface_tracer_flux*current_state%global_grid%configuration%vertical%dzn(2) / &
+              ( current_state%global_grid%configuration%vertical%rhon(1) * &
+                current_state%diff_coefficient%data(1, current_y_index, current_x_index))
+
+          else if (current_state%tracer_surf_bc_opt(n) == TRACER_SURFACE_VALUE_SPECIFIED) then
+
+            ztracer(i)%data(1, current_y_index, current_x_index)= 2.0 * current_state%tracer_surf_bc(n) - &
+              ztracer(i)%data(2, current_y_index, current_x_index)
+            tracer(i)%data(1, current_y_index, current_x_index)= 2.0 * current_state%tracer_surf_bc(n) - &
+              tracer(i)%data(2, current_y_index, current_x_index)
+
+          end if
+
+        end do
+
+      else
+
+        do n=current_state%radioactive_tracer_index, current_state%radioactive_tracer_index + &
+             current_state%n_radioactive_tracers - 1
+          tracer(n)%data(1, current_y_index, current_x_index)=tracer(n)%data(2, current_y_index, current_x_index)
+        end do
+
+      end if
+
+    end if
+
+  end subroutine
 
   !> Solves the Monin-Obukhov equations in the case of specified surface values of temperature and mixing ratio,combined
   !! into a specified value of virtual temperature. It is a modified version of the subroutine described in Bull and
