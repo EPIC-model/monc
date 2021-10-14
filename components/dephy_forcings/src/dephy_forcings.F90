@@ -370,12 +370,12 @@ contains
     if (is_component_enabled(current_state%options_database, "forcing")) then
       call log_master_log(LOG_ERROR, "DEPHY: forcing component incompatible with dephy forcing")
     endif
-    if(is_component_enabled(current_state%options_database, "socrated_couple")) then
+    if(is_component_enabled(current_state%options_database, "socrates_couple")) then
     if(int_rad_theta==1) then
       call log_master_log(LOG_ERROR, "DEPHY: socrates_couple component incompatible with dephy flag rad_theta==1")
     endif
     endif
-    if(.not. is_component_enabled(current_state%options_database, "socrated_couple")) then
+    if(.not. is_component_enabled(current_state%options_database, "socrates_couple")) then
     if(int_rad_theta==0) then
       call log_master_log(LOG_ERROR, "DEPHY: absence of socrates_couple component incompatible with dephy flag rad_theta==0")
     endif
