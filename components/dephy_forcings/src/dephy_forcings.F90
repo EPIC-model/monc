@@ -182,9 +182,9 @@ module dephy_forcings_mod
   integer :: int_inversion_nudging=0 ! Flag for inversion nudging (optional DEPHY extension)
   real(kind=DEFAULT_PRECISION), allocatable :: theta_l(:,:,:)
   real(kind=DEFAULT_PRECISION), allocatable :: theta_l_mean(:)
-  real(kind=DEFAULT_PRECISION) :: nudging_height_above_inversion
-  real(kind=DEFAULT_PRECISION) :: nudging_transition_thickness
-  real(kind=DEFAULT_PRECISION) :: nudging_timescale
+  real(kind=DEFAULT_PRECISION) :: inversion_nudging_height_above
+  real(kind=DEFAULT_PRECISION) :: inversion_nudging_transition
+  real(kind=DEFAULT_PRECISION) :: inversion_nudging_time
 
   ! Dephy strings
   character(len=STRING_LENGTH):: str_surfaceType, &
@@ -608,13 +608,13 @@ contains
     implicit none
     logical :: l_extended_dephy_format
 
-    call dephy_variable_exists(l_extended_dephy_format, 'int_inversion_nudging')
+    call dephy_variable_exists(l_extended_dephy_format, 'inversion_nudging')
     if(l_extended_dephy_format) then
-       call dephy_read_integer(int_inversion_nudging,'int_inversion_nudging')
+       call dephy_read_integer(int_inversion_nudging,'inversion_nudging')
        if(int_inversion_nudging==1) then
-           call dephy_read_real(nudging_height_above_inversion,'nudging_height_above_inversion')
-           call dephy_read_real(nudging_transition_thickness,'nudging_transition_thickness')
-           call dephy_read_real(nudging_timescale,'nudging_timescale')
+           call dephy_read_real(inversion_nudging_height_above,'inversion_nudging_height_above')
+           call dephy_read_real(inversion_nudging_transition,'inversion_nudging_transition')
+           call dephy_read_real(inversion_nudging_time,'inversion_inversion_nudging_time')
        endif
     end if
 
@@ -940,12 +940,12 @@ contains
     end do
     z_inversion=0.5_DEFAULT_PRECISION*(module_zn(kk_inversion_plus)+module_zn(kk_inversion_plus-1))
     do kk=1,size(theta_l,1)
-       this_weight=cos_transition(module_zn(kk),z_inversion+nudging_height_above_inversion+nudging_transition_thickness,&
-       z_inversion+nudging_height_above_inversion)
-       nudging_inv_u_traj(kk)=this_weight/nudging_timescale
-       nudging_inv_v_traj(kk)=this_weight/nudging_timescale
-       nudging_inv_theta_traj(kk)=this_weight/nudging_timescale
-       nudging_inv_rv_traj(kk)=this_weight/nudging_timescale
+       this_weight=cos_transition(module_zn(kk),z_inversion+inversion_nudging_height_above+inversion_nudging_transition,&
+       z_inversion+inversion_nudging_height_above)
+       nudging_inv_u_traj(kk)=this_weight/inversion_nudging_time
+       nudging_inv_v_traj(kk)=this_weight/inversion_nudging_time
+       nudging_inv_theta_traj(kk)=this_weight/inversion_nudging_time
+       nudging_inv_rv_traj(kk)=this_weight/inversion_nudging_time
     end do
 
   end subroutine dephy_calc_interactive_nudging_profiles
@@ -1489,16 +1489,16 @@ subroutine calculate_theta_l_mean(current_state)
 
 end subroutine calculate_theta_l_mean
 
-  subroutine dephy_update_socrates(socrates_opt,lat_traj,lon_traj,albedo_traj)
-    implicit none
-    type (str_socrates_options), intent(inout) :: socrates_opt
-    real(kind=DEFAULT_PRECISION), intent(in) :: lat_traj
-    real(kind=DEFAULT_PRECISION), intent(in) :: lon_traj
-    real(kind=DEFAULT_PRECISION), intent(in) :: albedo_traj
-    socrates_opt%latitude=lat_traj
-    socrates_opt%longitude=lon_traj
-    socrates_opt%surface_albedo=albedo_traj
-  end subroutine dephy_update_socrates
+subroutine dephy_update_socrates(socrates_opt,lat_traj,lon_traj,albedo_traj)
+  implicit none
+  type (str_socrates_options), intent(inout) :: socrates_opt
+  real(kind=DEFAULT_PRECISION), intent(in) :: lat_traj
+  real(kind=DEFAULT_PRECISION), intent(in) :: lon_traj
+  real(kind=DEFAULT_PRECISION), intent(in) :: albedo_traj
+  socrates_opt%latitude=lat_traj
+  socrates_opt%longitude=lon_traj
+  socrates_opt%surface_albedo=albedo_traj
+end subroutine dephy_update_socrates
 
 end module dephy_forcings_mod
 
