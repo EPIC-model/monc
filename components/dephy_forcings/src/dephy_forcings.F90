@@ -6,15 +6,18 @@
 ! - Module needs to be initialised after gridmanager but before random noise
 ! - This may need to be checked
 
+! CURRENTLY TESTING
+! - Handle damping in prescribed fashion (could be a question for DEPHY community)?
+! - Implement lat/lon dependence for radiation (socrates_opt%latitude,socrates_opt%longitude,socrates_opt%surface_albedo)
+
 ! TODO
+! - Implement check that grid manager intialised but random noise hasn't been applied yet
 ! - Check for possible problematic nature of modifying both current state and vertical grid simultaneously
 !   and check what "target" keyword does in this context.
 ! - Handle (evolving) surface pressure, and surface pressure initialisation from file
 ! - Deal with surface non-zero height above sea level?
 ! - Make code self-documenting with Doxygen
 ! - Add diagnostics
-! - Implement lat/lon dependence for radiation (socrates_opt%latitude,socrates_opt%longitude,socrates_opt%l_variable_srf_albedo,socrates_opt%surface_albedo)
-! - Handle damping in prescribed fashion (could be a question for DEPHY community)?
 ! - Improve interpolation routines? (replace by Steffen interpolation)
 ! - Code up finalisation callback (deallocation)?
 ! - Implement a better column mode check?
@@ -23,7 +26,7 @@
 ! - Discuss best way to refer to z-coordinates
 
 ! TODO: RELATED ISSUES
-! - Discuss possible problematic nature of modifying both current state and vertical grid simultaneously in general
+! - Discuss possible problematic nature of modifying both current_state and current_state%vertical grid simultaneously in general
 ! - Work on problems with "entire domain" setfluxlook for heterogeneous surface forcings.
 ! - More systematic implementation of utilities in a separate module.
 
@@ -36,10 +39,9 @@ module dephy_forcings_mod
       options_get_string
   use grids_mod, only : vertical_grid_configuration_type, X_INDEX, Y_INDEX, Z_INDEX
   use logging_mod, only : LOG_ERROR, log_master_log, log_log
-  use datadefn_mod, only : DEFAULT_PRECISION
   ! note z0 and z0th are overwritten during the simulation
   use science_constants_mod, only : cp, rlvap, z0, z0th, G, von_karman_constant, ratio_mol_wts,r_over_cp,&
-      alphah,betah,betam,gammah,gammam
+      alphah,betah,betam,gammah,gammam,rlvap_over_cp
   use q_indices_mod, only: get_q_index, standard_q_names
   use interpolation_mod, only: piecewise_linear_1d, interpolate_point_linear_1d, interpolate_point_linear_2d
   use registry_mod, only : is_component_enabled
@@ -59,6 +61,10 @@ module dephy_forcings_mod
   use gridmanager_mod, only : set_up_vertical_reference_properties,set_anelastic_pressure, &
     setup_reference_state_liquid_water_temperature_and_saturation, &
     calculate_mixing_length_for_neutral_case, set_buoyancy_coefficient
+  use datadefn_mod, only : DEFAULT_PRECISION, PRECISION_TYPE
+  use mpi, only : MPI_SUM, MPI_IN_PLACE
+  use socrates_couple_mod, only: socrates_opt
+  use def_socrates_options, only: str_socrates_options
 
   implicit none
 
@@ -71,6 +77,7 @@ module dephy_forcings_mod
   real(kind=DEFAULT_PRECISION), allocatable :: module_z(:)
   real(kind=DEFAULT_PRECISION), allocatable :: module_zn(:)
   real(kind=DEFAULT_PRECISION), allocatable :: full_theta(:,:,:)
+  real(kind=DEFAULT_PRECISION), parameter :: proper_pi=atan(1.0_DEFAULT_PRECISION) * 4.0_DEFAULT_PRECISION
 
   character(len=STRING_LENGTH) :: dephy_file
   integer :: ncid_dephy
@@ -171,6 +178,14 @@ module dephy_forcings_mod
         int_nudging_theta, &
         int_nudging_rv
 
+  ! EUREC4A nudging procedure
+  integer :: int_inversion_nudging=0 ! Flag for inversion nudging (optional DEPHY extension)
+  real(kind=DEFAULT_PRECISION), allocatable :: theta_l(:,:,:)
+  real(kind=DEFAULT_PRECISION), allocatable :: theta_l_mean(:)
+  real(kind=DEFAULT_PRECISION) :: nudging_height_above_inversion
+  real(kind=DEFAULT_PRECISION) :: nudging_transition_thickness
+  real(kind=DEFAULT_PRECISION) :: nudging_timescale
+
   ! Dephy strings
   character(len=STRING_LENGTH):: str_surfaceType, &
         str_surfaceForcing, &
@@ -238,6 +253,8 @@ contains
     allocate(nudging_inv_v_traj(kkp))
     allocate(nudging_inv_theta_traj(kkp))
     allocate(nudging_inv_rv_traj(kkp))
+    allocate(theta_l_mean(kkp))
+    allocate(theta_l(alloc_z, alloc_y, alloc_x))
 
     if(l_verbose) write(*,*) "initialised dephy 1"
 
@@ -256,6 +273,7 @@ contains
     call dephy_read_surface_variables() ! reads and interpolates forcings
     call dephy_read_integers() ! reads flags
     call dephy_read_strings() ! reads strings
+    call dephy_read_inversion_nudging()
 
     if(l_verbose) write(*,*) "initialised dephy 4"
 
@@ -277,7 +295,7 @@ contains
 
     call check_status(nf90_close(ncid_dephy))
 
-    if(l_verbose) write(*,*) "initialised dephy 9"
+    if(l_verbose) write(*,*) "initialised dephy 10"
 
     !call dephy_bughunting(current_state)
 
@@ -315,7 +333,7 @@ contains
 
     if(l_verbose) write(*,*) "dephy timestep 4"
 
-    call dephy_bughunting(current_state)
+    !call dephy_bughunting(current_state)
 
   end subroutine timestep_callback
 
@@ -524,6 +542,15 @@ contains
   end subroutine dephy_read_forcing_variable
 
 
+ subroutine dephy_variable_exists(does_exist, netcdf_name)
+    implicit none
+    character(len=*), intent(in) :: netcdf_name
+    logical, intent(inout) :: does_exist
+    integer :: variable_id
+
+    call check_status(nf90_inq_varid(ncid_dephy, netcdf_name, variable_id), does_exist)
+  end subroutine dephy_variable_exists
+
   subroutine dephy_read_integer(dephy_integer,netcdf_name)
     implicit none
     integer, intent(inout) :: dephy_integer
@@ -533,6 +560,18 @@ contains
     call check_status(nf90_get_att(ncid_dephy, nf90_global, netcdf_name, dephy_integer))
 
   end subroutine dephy_read_integer
+
+
+  subroutine dephy_read_real(dephy_real,netcdf_name)
+    implicit none
+    real(kind=DEFAULT_PRECISION):: dephy_real
+    double precision:: dephy_double
+    character(len=*), intent(in) :: netcdf_name
+    integer :: variable_id
+
+    call check_status(nf90_get_att(ncid_dephy, nf90_global, netcdf_name, dephy_double))
+    dephy_real=1.0_DEFAULT_PRECISION*dephy_double
+  end subroutine dephy_read_real
 
 
   subroutine dephy_read_string(dephy_string,netcdf_name)
@@ -563,6 +602,23 @@ contains
     call dephy_read_profile_variable(tke_dephy, 'tke')
 
   end subroutine dephy_read_profile_variables
+\
+
+  subroutine dephy_read_inversion_nudging
+    implicit none
+    logical :: l_extended_dephy_format
+
+    call dephy_variable_exists(l_extended_dephy_format, 'int_inversion_nudging')
+    if(l_extended_dephy_format) then
+       call dephy_read_integer(int_inversion_nudging,'int_inversion_nudging')
+       if(int_inversion_nudging==1) then
+           call dephy_read_real(nudging_height_above_inversion,'nudging_height_above_inversion')
+           call dephy_read_real(nudging_transition_thickness,'nudging_transition_thickness')
+           call dephy_read_real(nudging_timescale,'nudging_timescale')
+       endif
+    end if
+
+  end subroutine dephy_read_inversion_nudging
 
 
   subroutine dephy_read_forcing_variables
@@ -641,7 +697,6 @@ contains
     real(kind=DEFAULT_PRECISION), intent(in) :: prof(:), prof_targ(:),inv_nudge_time(:)
     real(kind=DEFAULT_PRECISION), intent(inout) :: tendency(:,:,:)
     integer :: ii,jj,kk
-
 
     do ii=1,size(tendency,3)
     do jj=1,size(tendency,2)
@@ -752,7 +807,6 @@ contains
     real(kind=DEFAULT_PRECISION), intent(inout) :: su(:,:,:),sv(:,:,:),sw(:,:,:)
     real(kind=DEFAULT_PRECISION) :: fcoriol, fcoriol2
     real(kind=DEFAULT_PRECISION), parameter :: omega_earth=7.2921e-5 ! radial frecuency of earth's rotation
-    real(kind=DEFAULT_PRECISION), parameter :: proper_pi=atan(1.0_DEFAULT_PRECISION) * 4.0_DEFAULT_PRECISION
     integer ii,jj,kk
 
     fcoriol=2.0_DEFAULT_PRECISION*omega_earth*sin(lat*proper_pi/180.0_DEFAULT_PRECISION)
@@ -825,12 +879,76 @@ contains
     call interpolate_point_linear_2d(time_dephy, rv_nudging_dephy, current_state%time, rv_nudging)
     call interpolate_point_linear_2d(time_dephy, u_nudging_dephy, current_state%time, u_nudging)
     call interpolate_point_linear_2d(time_dephy, v_nudging_dephy, current_state%time, v_nudging)
-    call interpolate_point_linear_2d(time_dephy, nudging_inv_u_traj_dephy, current_state%time, nudging_inv_u_traj)
-    call interpolate_point_linear_2d(time_dephy, nudging_inv_v_traj_dephy, current_state%time, nudging_inv_v_traj)
-    call interpolate_point_linear_2d(time_dephy, nudging_inv_theta_traj_dephy, current_state%time, nudging_inv_theta_traj)
-    call interpolate_point_linear_2d(time_dephy, nudging_inv_rv_traj_dephy, current_state%time, nudging_inv_rv_traj)
+    if(int_inversion_nudging==0) then
+      call interpolate_point_linear_2d(time_dephy, nudging_inv_u_traj_dephy, current_state%time, nudging_inv_u_traj)
+      call interpolate_point_linear_2d(time_dephy, nudging_inv_v_traj_dephy, current_state%time, nudging_inv_v_traj)
+      call interpolate_point_linear_2d(time_dephy, nudging_inv_theta_traj_dephy, current_state%time, nudging_inv_theta_traj)
+      call interpolate_point_linear_2d(time_dephy, nudging_inv_rv_traj_dephy, current_state%time, nudging_inv_rv_traj)
+    endif
   end subroutine dephy_time_interpolate
 
+  real(kind=DEFAULT_PRECISION) function cos_transition(absolute_input, transition_start, transition_end)
+    real(kind=DEFAULT_PRECISION), intent(in) :: absolute_input
+    real(kind=DEFAULT_PRECISION), intent(in) :: transition_start
+    real(kind=DEFAULT_PRECISION), intent(in) :: transition_end
+    real(kind=DEFAULT_PRECISION) :: normalised_input
+
+    ! function that smoothly transitions from 1 to 0 using a
+    ! cosine-shaped transition between start and end
+    ! start can be larger than end, in which case is applies in reverse order
+    normalised_input = (absolute_input-transition_start)/(transition_end-transition_start)
+    if(normalised_input<0.0_DEFAULT_PRECISION) then
+      cos_transition=1.0_DEFAULT_PRECISION
+    elseif(normalised_input>1.0_DEFAULT_PRECISION) then
+      cos_transition=0.0_DEFAULT_PRECISION
+    else
+      cos_transition=0.5_DEFAULT_PRECISION+0.5_DEFAULT_PRECISION*cos(normalised_input*proper_pi)
+    end if
+  end function cos_transition
+
+
+  subroutine dephy_calc_interactive_nudging_profiles(current_state)
+    implicit none
+    type(model_state_type), target, intent(inout) :: current_state
+    real(kind=DEFAULT_PRECISION) :: theta_l_max_grad
+    real(kind=DEFAULT_PRECISION) :: z_inversion
+    real(kind=DEFAULT_PRECISION) :: this_weight
+    integer :: ii,iql,jj,kk,kk_inversion_plus
+    iql=get_q_index(standard_q_names%CLOUD_LIQUID_MASS, 'dephy_forcings')
+
+    ! calculate theta_l
+    ! average theta_l
+    do ii=1,size(theta_l,3)
+    do jj=1,size(theta_l,2)
+    do kk=1,size(theta_l,1)
+      theta_l(kk,jj,ii)=full_theta(kk,jj,ii)+&
+      current_state%sq(iql)%data(kk,jj,ii)*rlvap_over_cp/current_state%global_grid%configuration%vertical%rprefrcp(kk)
+    end do
+    end do
+    end do
+    call calculate_theta_l_mean(current_state)
+    theta_l_max_grad=0.0_DEFAULT_PRECISION
+    do kk=2,size(theta_l,1)
+      if(module_zn(kk)<6000.0_DEFAULT_PRECISION) then ! clip at 6 km, currently hardcoded
+        if((theta_l_mean(kk)-theta_l_mean(kk-1))/(module_zn(kk)-module_zn(kk-1))>theta_l_max_grad) then
+          theta_l_max_grad=(theta_l_mean(kk)-theta_l_mean(kk-1))/(module_zn(kk)-module_zn(kk-1))
+          kk_inversion_plus=kk
+         end if
+      else if(kk_inversion_plus==0) then
+        kk_inversion_plus=kk
+      end if
+    end do
+    z_inversion=0.5_DEFAULT_PRECISION*(module_zn(kk_inversion_plus)+module_zn(kk_inversion_plus-1))
+    do kk=1,size(theta_l,1)
+       this_weight=cos_transition(module_zn(kk),z_inversion+nudging_height_above_inversion+nudging_transition_thickness,&
+       z_inversion+nudging_height_above_inversion)
+       nudging_inv_u_traj(kk)=this_weight/nudging_timescale
+       nudging_inv_v_traj(kk)=this_weight/nudging_timescale
+       nudging_inv_theta_traj(kk)=this_weight/nudging_timescale
+       nudging_inv_rv_traj(kk)=this_weight/nudging_timescale
+    end do
+
+  end subroutine dephy_calc_interactive_nudging_profiles
 
   subroutine dephy_apply_forcings(current_state)
     implicit none
@@ -840,8 +958,11 @@ contains
 
     iqv=get_q_index(standard_q_names%VAPOUR, 'dephy_forcings')
 
-    ! CALCULATE COMPLETE THETA FOR CONVENIENCE
+    ! CALCULATE COMPLETE THETA AND THETA_L
     call dephy_add_profile(current_state%th%data,current_state%global_grid%configuration%vertical%thref,full_theta)
+    if(int_inversion_nudging==1) then
+      call dephy_calc_interactive_nudging_profiles(current_state)
+    endif
 
     ! APPLY FORCINGS
     ! NUDGINGS NEED MEAN
@@ -882,7 +1003,9 @@ contains
     end if
 
     ! RADIATION TENDENCIES
-    if(int_rad_theta==1) then
+    if(int_rad_theta==0) then
+      call dephy_update_socrates(socrates_opt,lat_traj,lon_traj,albedo_traj)
+    elseif(int_rad_theta==1) then
       call dephy_apply_tendency(theta_rad,current_state%sth%data)
     end if
 
@@ -1344,6 +1467,38 @@ subroutine dephy_bughunting(current_state)
    minloc1(current_state%zth%data), minloc1(current_state%zq(iqv)%data)
 
 end subroutine dephy_bughunting
+
+subroutine calculate_theta_l_mean(current_state)
+  type(model_state_type), intent(inout) :: current_state
+
+  integer :: k, n, bar_index, ierr
+  real(kind=DEFAULT_PRECISION) :: rnhpts
+
+   rnhpts=1.0_DEFAULT_PRECISION/real(current_state%global_grid%size(X_INDEX)*current_state%global_grid%size(Y_INDEX))
+
+   do k=current_state%local_grid%local_domain_start_index(Z_INDEX), current_state%local_grid%local_domain_end_index(Z_INDEX)
+      theta_l_mean(k)=sum(theta_l(k, &
+      current_state%local_grid%local_domain_start_index(Y_INDEX):current_state%local_grid%local_domain_end_index(Y_INDEX), &
+      current_state%local_grid%local_domain_start_index(X_INDEX):current_state%local_grid%local_domain_end_index(X_INDEX)  &
+      ))
+    end do
+
+  call mpi_allreduce(MPI_IN_PLACE, theta_l_mean, current_state%local_grid%size(Z_INDEX), PRECISION_TYPE, MPI_SUM, &
+       current_state%parallel%monc_communicator, ierr)
+  theta_l_mean(:)=theta_l_mean(:)*rnhpts
+
+end subroutine calculate_theta_l_mean
+
+  subroutine dephy_update_socrates(socrates_opt,lat_traj,lon_traj,albedo_traj)
+    implicit none
+    type (str_socrates_options), intent(inout) :: socrates_opt
+    real(kind=DEFAULT_PRECISION), intent(in) :: lat_traj
+    real(kind=DEFAULT_PRECISION), intent(in) :: lon_traj
+    real(kind=DEFAULT_PRECISION), intent(in) :: albedo_traj
+    socrates_opt%latitude=lat_traj
+    socrates_opt%longitude=lon_traj
+    socrates_opt%surface_albedo=albedo_traj
+  end subroutine dephy_update_socrates
 
 end module dephy_forcings_mod
 

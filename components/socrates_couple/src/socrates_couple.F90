@@ -58,7 +58,8 @@ module socrates_couple_mod
                                                                  tend_pr_tot_th_sw,    tend_pr_tot_tabs_sw,   &
                                                                  tend_pr_tot_th_total, tend_pr_tot_tabs_total
 
-  public socrates_couple_get_descriptor
+  public socrates_couple_get_descriptor, socrates_opt
+
 contains
 
   !> Provides the descriptor back to the caller and is used in component registration
@@ -72,9 +73,9 @@ contains
 
     socrates_couple_get_descriptor%field_value_retrieval=>field_value_retrieval_callback
     socrates_couple_get_descriptor%field_information_retrieval=>field_information_retrieval_callback
-    
+
     allocate(socrates_couple_get_descriptor%published_fields(14+3+6))
-    
+
     socrates_couple_get_descriptor%published_fields(1)="flux_up_shortwave"
     socrates_couple_get_descriptor%published_fields(2)="flux_down_shortwave"
     socrates_couple_get_descriptor%published_fields(3)="flux_up_longwave"
@@ -88,7 +89,7 @@ contains
     socrates_couple_get_descriptor%published_fields(11)="surface_up_shortwave"
     socrates_couple_get_descriptor%published_fields(12)="shortwave_heating_rate"
     socrates_couple_get_descriptor%published_fields(13)="longwave_heating_rate"
-    socrates_couple_get_descriptor%published_fields(14)="total_radiative_heating_rate"    
+    socrates_couple_get_descriptor%published_fields(14)="total_radiative_heating_rate"
 
     socrates_couple_get_descriptor%published_fields(15)="tend_tabs_socrates_3d_longwave_local"
     socrates_couple_get_descriptor%published_fields(16)="tend_tabs_socrates_3d_shortwave_local"
@@ -100,7 +101,7 @@ contains
     socrates_couple_get_descriptor%published_fields(21)="tend_tabs_socrates_profile_longwave_total_local"
     socrates_couple_get_descriptor%published_fields(22)="tend_tabs_socrates_profile_shortwave_total_local"
     socrates_couple_get_descriptor%published_fields(23)="tend_tabs_socrates_profile_total_radiative_heating_total_local"
-       
+
   end function socrates_couple_get_descriptor
 
   !> The initialisation callback sets up the prescribed longwave fluxes and the
@@ -114,10 +115,10 @@ contains
     k_top=current_state%local_grid%size(Z_INDEX) + current_state%local_grid%halo_size(Z_INDEX) * 2
     y_local=current_state%local_grid%size(Y_INDEX) + current_state%local_grid%halo_size(Y_INDEX) * 2
     x_local=current_state%local_grid%size(X_INDEX) + current_state%local_grid%halo_size(X_INDEX) * 2
-    
+
     y_nohalos=current_state%local_grid%size(Y_INDEX)
-    x_nohalos=current_state%local_grid%size(X_INDEX) 
-    
+    x_nohalos=current_state%local_grid%size(X_INDEX)
+
     ! Since these current_state variables are optional, it is possible for the model to be run without them
     ! and then reconfigured with this component enabled.  In that case, they will not be found in the checkpoint,
     ! and they will not be allocated, but they will still be needed.
@@ -207,9 +208,9 @@ contains
     tend_pr_tot_tabs_total(:) = 0.0_DEFAULT_PRECISION
 
     ! derive density and radiation factor for heating rate calculation
-    socrates_derived_fields%density_factor(1) =  0.0 
+    socrates_derived_fields%density_factor(1) =  0.0
     do k = 2, k_top
-       socrates_derived_fields%density_factor(k) =  & 
+       socrates_derived_fields%density_factor(k) =  &
             current_state%global_grid%configuration%vertical%rhon(k)* &
             current_state%global_grid%configuration%vertical%dz(k)
     enddo
@@ -257,7 +258,7 @@ contains
     real(DEFAULT_PRECISION) :: local_dtm  ! Local timestep variable
     integer :: icol, jcol ! Shorthand column indices
     integer :: target_x_index, target_y_index
-   
+
     integer :: k ! look counter
     logical :: calculate_diagnostics
 
@@ -269,9 +270,9 @@ contains
 
     local_dtm = current_state%dtm*2.0
     if (current_state%field_stepping == FORWARD_STEPPING) local_dtm=current_state%dtm
-    
+
     ! work out column indexes from MONC (these include the halo)
-    icol=current_state%column_local_x 
+    icol=current_state%column_local_x
     jcol=current_state%column_local_y
     ! work out a target index for radiation arrays (no halo)
     target_y_index=jcol-current_state%local_grid%halo_size(Y_INDEX)
@@ -280,14 +281,14 @@ contains
     ! Test whether it is a radiation calc timestep on the first non-halo column
     ! If it is, then calc all year, day, time in hours and timestep.
     ! Note: all socrates time control variables are declared in the socrates_opt
-    !       or socrates_derived_fields structure, except rad_last_time, which is 
-    !       in current_state. 
+    !       or socrates_derived_fields structure, except rad_last_time, which is
+    !       in current_state.
     if (current_state%first_nonhalo_timestep_column) then
        !i) 1 call radiation on timestep 2 to initialise the heating rates
        !ii) if rad_interval less than or equal to 0, SOCRATES called on every timestep
        if (socrates_opt%rad_interval .le. 0 .or. current_state%timestep .eq. 2 ) then
           socrates_opt%l_rad_calc = .true.
-       else  ! compute on specified interval (determined by 
+       else  ! compute on specified interval (determined by
              ! model_core/src/components/timestepper.F90, depends on time_basis)
           socrates_opt%l_rad_calc = current_state%radiation_timestep
        endif
@@ -302,7 +303,7 @@ contains
           call log_master_log &
                (LOG_INFO, "methane ="//trim(conv_to_string(socrates_opt%ch4_mmr))//&
                " l_ch4="//trim(conv_to_string(lw_control%l_ch4)))
-          
+
           ! Do not really like this but update the rad_time_hours and
           ! rad_day here using time.
           socrates_opt%rad_day = socrates_opt%rad_start_day + &
@@ -320,7 +321,7 @@ contains
           ! radiative timetep to this one.
           current_state%rad_last_time = current_state%time
        endif
-       
+
        ! set surface temperature. Based on LEM, but needs some thought to capture
        ! atmospheric surface and actual surface. Here they are the same
        ! which may lead to too much emission (depending on profile)
@@ -372,7 +373,7 @@ contains
           socrates_derived_fields%sol_const= &
                socrates_opt%default_solar_constant * &
                socrates_derived_fields%scs
-          
+
           ! calulates the solar angle, fraction_lit and cos of zenith angle
           call solar_angle_calculation(socrates_opt, socrates_derived_fields)
           !
@@ -407,23 +408,23 @@ contains
              socrates_derived_fields%albedoin2 = socrates_opt%surface_albedo
           endif
        endif
-       
-       ! AH - after all this testing check whether solar is required. If 
+
+       ! AH - after all this testing check whether solar is required. If
        ! no solar then set fraction_lit = 0.0
-       if (socrates_opt%l_no_solar) then 
+       if (socrates_opt%l_no_solar) then
           socrates_derived_fields%fraction_lit = 0.0
        endif
 
        call rad_ctl(current_state, sw_spectrum, lw_spectrum,    &
              mcc, socrates_opt, merge_fields, socrates_derived_fields)
-       
+
        ! This is needed for JULES coupling. Including irrespective of JULES enabled
        ! assign downward fluxes at the surface
        !current_state%sw_down_surf(jcol, icol) = &
        !  socrates_derived_fields%flux_down_sw(1, target_y_index, target_x_index)
        !current_state%lw_down_surf(jcol, icol) = &
        !  socrates_derived_fields%flux_down_lw(1, target_y_index, target_x_index)
-       
+
     endif
 
     ! update the current_state sth
@@ -571,7 +572,7 @@ contains
    else if (name .eq. "total_radiative_heating_rate") then
      call set_published_field_value(field_value, real_3d_field = socrates_derived_fields%totrad_hr)
    !
-   ! 2D radiative fluxes   
+   ! 2D radiative fluxes
    else if (name .eq. "toa_up_longwave") then
      call set_published_field_value(field_value, real_2d_field = socrates_derived_fields%toa_up_longwave)
    else if (name .eq. "surface_down_longwave") then
