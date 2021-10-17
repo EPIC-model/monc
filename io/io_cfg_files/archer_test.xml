@@ -25,12 +25,14 @@
 	</server-configuration>
 
 <!--  paracon level0 fields  -->
+#include "io/io_cfg_files/paracon_level0_scalar_fields.xml"
 #include "io/io_cfg_files/paracon_2d_fields.xml"
+#include "io/io_cfg_files/paracon_level0_profile_resolved.xml"
 
 <!--  additional paracon xml packages -->
 #include "io/io_cfg_files/paracon_3d_fields.xml"
 #include "io/io_cfg_files/paracon_CASIM_process.xml"
-#include "io/io_cfg_files/paracon_socrates_fields.xml"
+#include "io/io_cfg_files/paracon_socrates_fields.xml" 
 
 #include "io/io_cfg_files/grid.xml"
 
@@ -49,8 +51,15 @@
 
   <!-- 1d -->
   <file name="{diagnostic_file_1d}" write_time_frequency="{diag_write_freq}" title="1d" write_precision="fLOaT" >
+    <include group="profile_resolved" time_manipulation="averaged" output_frequency="{mm}"/>
     <include group="CASIM_process_rate_profiles" time_manipulation="averaged" output_frequency="{mm}"/>
   </file>
+
+  <!-- sd -->
+  <file name="{diagnostic_file_sd}" write_time_frequency="{diag_write_freq}" title="sd" write_precision="fLOaT" >
+    <include group="socrates_fields" time_manipulation="averaged" output_frequency="{mm1}"/>
+  </file>
+
 
 </data-writing>
 

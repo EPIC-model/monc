@@ -84,7 +84,7 @@ case $compileoption in
   fcm make -j4 -f $fcmconfig -f fcm-make/socrates.cfg
   ;;
 4)
-  fcm make -j4 -f $fcmconfig -f fcm-make/casim_socrates.cfg
+  fcm make --new -j4 -f $fcmconfig -f fcm-make/casim_socrates.cfg
   ;;
 *)
   echo "Unexpected compilation option. Should be an integer in the range 1-4"
