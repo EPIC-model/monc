@@ -49,7 +49,7 @@ module dephy_forcings_mod
        nf90_inquire_attribute, nf90_open, nf90_strerror,       &
        nf90_inq_dimid, nf90_inquire_dimension, nf90_inq_varid, &
        nf90_get_var, nf90_inquire, nf90_close, nf90_get_att, &
-       nf90_ebaddim, nf90_enotatt, nf90_enotvar
+       nf90_ebaddim, nf90_enotatt, nf90_enotvar, nf90_inquire_attribute
   use configuration_checkpoint_netcdf_parser_mod, only : remove_null_terminator_from_string
   ! use existing fluxlook functionality
   use setfluxlook_mod, only : set_look, change_look
@@ -490,7 +490,7 @@ contains
 
     call check_status(nf90_inq_varid(ncid_dephy, netcdf_name, variable_id))
     call check_status(nf90_get_var(ncid_dephy, variable_id, field_in_file))
-    call piecewise_linear_1d(height_dephy, field_in_file(1,1,:,1), z_out, field)
+    call piecewise_linear_1d(height_dephy, field_in_file(1,:,1,1), z_out, field)
 
   end subroutine dephy_read_profile_variable
 
@@ -542,14 +542,16 @@ contains
   end subroutine dephy_read_forcing_variable
 
 
- subroutine dephy_variable_exists(does_exist, netcdf_name)
+ subroutine dephy_attribute_exists(does_exist, netcdf_name)
     implicit none
     character(len=*), intent(in) :: netcdf_name
     logical, intent(inout) :: does_exist
-    integer :: variable_id
+    integer :: dephy_integer
+    integer :: nc_status
 
-    call check_status(nf90_inq_varid(ncid_dephy, netcdf_name, variable_id), does_exist)
-  end subroutine dephy_variable_exists
+    nc_status=nf90_get_att(ncid_dephy, nf90_global, netcdf_name, dephy_integer)
+    call check_status(nc_status, does_exist)
+  end subroutine dephy_attribute_exists
 
   subroutine dephy_read_integer(dephy_integer,netcdf_name)
     implicit none
@@ -602,19 +604,18 @@ contains
     call dephy_read_profile_variable(tke_dephy, 'tke')
 
   end subroutine dephy_read_profile_variables
-\
 
   subroutine dephy_read_inversion_nudging
     implicit none
     logical :: l_extended_dephy_format
 
-    call dephy_variable_exists(l_extended_dephy_format, 'inversion_nudging')
+    call dephy_attribute_exists(l_extended_dephy_format,'inversion_nudging')
     if(l_extended_dephy_format) then
        call dephy_read_integer(int_inversion_nudging,'inversion_nudging')
        if(int_inversion_nudging==1) then
            call dephy_read_real(inversion_nudging_height_above,'inversion_nudging_height_above')
            call dephy_read_real(inversion_nudging_transition,'inversion_nudging_transition')
-           call dephy_read_real(inversion_nudging_time,'inversion_inversion_nudging_time')
+           call dephy_read_real(inversion_nudging_time,'inversion_nudging_time')
        endif
     end if
 
