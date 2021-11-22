@@ -2,28 +2,32 @@
 ! as well as setfluxlook, coriolis, and "forcing from mcf" routines
 
 ! NOTES
-! - Note q in MONC is mixing ratio (rather than specific humidity, as is more usual)
+! - Currently, surface pressure needs to be set in mcf still.
 ! - Module needs to be initialised after gridmanager but before random noise
-! - This may need to be checked
+!   This may need to be checked
+! - Note q in MONC is mixing ratio (rather than specific humidity, as is more usual)
 
 ! CURRENTLY TESTING
 ! - Handle damping in prescribed fashion (could be a question for DEPHY community)?
 ! - Implement lat/lon dependence for radiation (socrates_opt%latitude,socrates_opt%longitude,socrates_opt%surface_albedo)
 
 ! TODO
-! - Implement check that grid manager intialised but random noise hasn't been applied yet
+! - Surface pressure initialisation from file
+! - Implement consistency check for use_surface_boundary_conditions flag
+! - Implement check that grid manager initialised but random noise hasn't been applied yet
 ! - Check for possible problematic nature of modifying both current state and vertical grid simultaneously
 !   and check what "target" keyword does in this context.
-! - Handle (evolving) surface pressure, and surface pressure initialisation from file
-! - Deal with surface non-zero height above sea level?
+! - Handle (evolving) surface pressure?
+! - Deal with surface non-zero height above sea level (better to deal with this in Lagtraj?)
 ! - Make code self-documenting with Doxygen
 ! - Add diagnostics
-! - Improve interpolation routines? (replace by Steffen interpolation)
+! - Improve interpolation routines? (replace linear interpolation by Steffen interpolation)
 ! - Code up finalisation callback (deallocation)?
-! - Implement a better column mode check?
+! - Implement a less hacky column mode check?
+! - Code restructuring/reformatting/more DRY code
+! - Discuss best way to refer to z-coordinates
 ! - Discuss best way to do lowerbc and z0/z0th reinitialisation
 ! - Check grid vertical halo size
-! - Discuss best way to refer to z-coordinates
 
 ! TODO: RELATED ISSUES
 ! - Discuss possible problematic nature of modifying both current_state and current_state%vertical grid simultaneously in general
@@ -1186,8 +1190,10 @@ contains
 
     if (trim(str_surfaceForcing) == "ts") then
        current_state%type_of_surface_boundary_conditions = PRESCRIBED_SURFACE_VALUES
+       current_state%use_surface_boundary_conditions = .true.
     else if (trim(str_surfaceForcing) == "surfaceFlux") then
        current_state%type_of_surface_boundary_conditions = PRESCRIBED_SURFACE_FLUXES
+       current_state%use_surface_boundary_conditions = .true.
     else
        call log_master_log(LOG_ERROR, "Surface condition for dephy not implemented")
     endif
