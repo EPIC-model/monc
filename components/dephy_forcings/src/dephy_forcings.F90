@@ -839,7 +839,7 @@ contains
 
     end do
     do kk=1,kkp-1
-      sw(kk, jj, ii)=fcoriol2*&
+      sw(kk, jj, ii)=sw(kk,jj,ii)+fcoriol2*&
            (0.25_DEFAULT_PRECISION*(u(kk, jj, ii)+u(kk+1, jj, ii)+&
            u(kk, jj, ii-1)+u(kk+1, jj, ii-1))+u_gal)
     end do
