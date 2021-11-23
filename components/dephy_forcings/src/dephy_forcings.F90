@@ -321,6 +321,8 @@ contains
       log(1.0_DEFAULT_PRECISION+current_state%global_grid%configuration%vertical%zn(2)/z0)
     current_state%global_grid%configuration%vertical%zlogth=&
       log((current_state%global_grid%configuration%vertical%zn(2)+z0)/z0th)
+    current_state%global_grid%configuration%vertical%vk_on_zlogm=&
+      von_karman_constant/current_state%global_grid%configuration%vertical%zlogm
 
     if(l_verbose) write(*,*) "dephy timestep 1"
 
@@ -494,7 +496,7 @@ contains
 
     call check_status(nf90_inq_varid(ncid_dephy, netcdf_name, variable_id))
     call check_status(nf90_get_var(ncid_dephy, variable_id, field_in_file))
-    call piecewise_linear_1d(height_dephy, field_in_file(1,:,1,1), z_out, field)
+    call piecewise_linear_1d(height_dephy, field_in_file(1,1,:,1), z_out, field)
 
   end subroutine dephy_read_profile_variable
 
@@ -926,7 +928,7 @@ contains
     do ii=1,size(theta_l,3)
     do jj=1,size(theta_l,2)
     do kk=1,size(theta_l,1)
-      theta_l(kk,jj,ii)=full_theta(kk,jj,ii)+&
+      theta_l(kk,jj,ii)=full_theta(kk,jj,ii)-&
       current_state%sq(iql)%data(kk,jj,ii)*rlvap_over_cp/current_state%global_grid%configuration%vertical%rprefrcp(kk)
     end do
     end do
