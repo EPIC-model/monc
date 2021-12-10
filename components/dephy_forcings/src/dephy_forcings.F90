@@ -218,6 +218,10 @@ contains
     type(vertical_grid_configuration_type) :: vertical_grid
     integer :: alloc_z, alloc_y, alloc_x
 
+    !if(current_state%parallel%my_rank==0) then
+    !    l_verbose=.true.
+    !endif
+
     if(l_verbose) write(*,*) "initialising dephy"
 
     alloc_z=current_state%local_grid%size(Z_INDEX) + current_state%local_grid%halo_size(Z_INDEX) * 2
@@ -301,7 +305,7 @@ contains
 
     if(l_verbose) write(*,*) "initialised dephy 10"
 
-    !call dephy_bughunting(current_state)
+    if(l_verbose) call dephy_bughunting(current_state)
 
   end subroutine initialise_callback
 
@@ -339,7 +343,8 @@ contains
 
     if(l_verbose) write(*,*) "dephy timestep 4"
 
-    !call dephy_bughunting(current_state)
+    if(l_verbose) call dephy_bughunting(current_state)
+    if(l_verbose) call dephy_dirty_diagnostics()
 
   end subroutine timestep_callback
 
@@ -563,7 +568,6 @@ contains
     implicit none
     integer, intent(inout) :: dephy_integer
     character(len=*), intent(in) :: netcdf_name
-    integer :: variable_id
 
     call check_status(nf90_get_att(ncid_dephy, nf90_global, netcdf_name, dephy_integer))
 
@@ -575,7 +579,6 @@ contains
     real(kind=DEFAULT_PRECISION):: dephy_real
     double precision:: dephy_double
     character(len=*), intent(in) :: netcdf_name
-    integer :: variable_id
 
     call check_status(nf90_get_att(ncid_dephy, nf90_global, netcdf_name, dephy_double))
     dephy_real=1.0_DEFAULT_PRECISION*dephy_double
@@ -819,7 +822,7 @@ contains
     fcoriol=2.0_DEFAULT_PRECISION*omega_earth*sin(lat*proper_pi/180.0_DEFAULT_PRECISION)
     ! Non-traditional coriolis terms, needed for energy-consistency
     ! See e.g. Igel and Biello 2020
-    ! Note geostrphic wind parametrises pressure gradients, and is therefore not in the non-traditional terms.
+    ! Note geostrophic wind parametrises pressure gradients, and is therefore not in the non-traditional terms.
     fcoriol2=2.0_DEFAULT_PRECISION*omega_earth*cos(lat*proper_pi/180.0_DEFAULT_PRECISION)
 
 #if defined(U_ACTIVE) && defined(V_ACTIVE)
@@ -840,7 +843,7 @@ contains
            u_gal-u_geo(kk))
 
     end do
-    do kk=1,kkp-1
+    do kk=2,kkp-1
       sw(kk, jj, ii)=sw(kk,jj,ii)+fcoriol2*&
            (0.25_DEFAULT_PRECISION*(u(kk, jj, ii)+u(kk+1, jj, ii)+&
            u(kk, jj, ii-1)+u(kk+1, jj, ii-1))+u_gal)
@@ -1236,7 +1239,6 @@ contains
   subroutine dephy_set_flux(current_state)
     type(model_state_type), intent(inout), target :: current_state
 
-    real(kind=DEFAULT_PRECISION) :: surface_temp   ! Surface temperature
     integer :: iqv
     iqv = get_q_index(standard_q_names%VAPOUR, 'dephy_forcings')
 
@@ -1344,7 +1346,6 @@ contains
 
     integer :: nn, k_monc, k_force                     ! loop counter
     integer :: nz_force, nt_force, nz_monc, nt_monc    ! time and height array sizes for forcing and monc grids
-    integer :: nnodes                                  ! number of input values
 
     nz_force = size(zvals)
     nt_force = size(time_vals)
@@ -1480,7 +1481,7 @@ end subroutine dephy_bughunting
 subroutine calculate_theta_l_mean(current_state)
   type(model_state_type), intent(inout) :: current_state
 
-  integer :: k, n, bar_index, ierr
+  integer :: k, ierr
   real(kind=DEFAULT_PRECISION) :: rnhpts
 
    rnhpts=1.0_DEFAULT_PRECISION/real(current_state%global_grid%size(X_INDEX)*current_state%global_grid%size(Y_INDEX))
@@ -1509,70 +1510,76 @@ subroutine dephy_update_socrates(socrates_opt,lat_traj,lon_traj,albedo_traj)
   socrates_opt%surface_albedo=albedo_traj
 end subroutine dephy_update_socrates
 
-end module dephy_forcings_mod
 
 !~ !! SOME MORE DIRTY DIAGNOSTICS JUST ADDED AS COMMENTS
 
-!~    if(l_verbose) write(*,*) 'lat_traj'
-!~    if(l_verbose) write(*,*) lat_traj
-!~    if(l_verbose) write(*,*) 'lon_traj'
-!~    if(l_verbose) write(*,*) lon_traj
-!~    if(l_verbose) write(*,*) 'ps_forc'
-!~    if(l_verbose) write(*,*) ps_forc
-!~    if(l_verbose) write(*,*) 'ts'
-!~    if(l_verbose) write(*,*) ts
-!~    if(l_verbose) write(*,*) 'sfc_sens_flx'
-!~    if(l_verbose) write(*,*) sfc_sens_flx
-!~    if(l_verbose) write(*,*) 'sfc_lat_flx'
-!~    if(l_verbose) write(*,*) sfc_lat_flx
-!~    if(l_verbose) write(*,*) 'z0_traj'
-!~    if(l_verbose) write(*,*) z0_traj
-!~    if(l_verbose) write(*,*) 'z0th_traj'
-!~    if(l_verbose) write(*,*) z0th_traj
-!~    if(l_verbose) write(*,*) 'ustar'
-!~    if(l_verbose) write(*,*) ustar
-!~    if(l_verbose) write(*,*) 'u_traj'
-!~    if(l_verbose) write(*,*) u_traj
-!~    if(l_verbose) write(*,*) 'v_traj'
-!~    if(l_verbose) write(*,*) v_traj
-!~    if(l_verbose) write(*,*) 'albedo_traj'
-!~    if(l_verbose) write(*,*) albedo_traj
-!~    if(l_verbose) write(*,*) 'q_skin_traj'
-!~    if(l_verbose) write(*,*) q_skin_traj
+subroutine dephy_dirty_diagnostics()
+    implicit none
 
-!~    if(l_verbose) write(*,*) 'height_forc'
-!~    if(l_verbose) write(*,*) height_forc
-!~    if(l_verbose) write(*,*) 'pressure_forc'
-!~    if(l_verbose) write(*,*) pressure_forc
-!~    if(l_verbose) write(*,*) 'ug'
-!~    if(l_verbose) write(*,*) ug
-!~    if(l_verbose) write(*,*) 'vg'
-!~    if(l_verbose) write(*,*) vg
-!~    if(l_verbose) write(*,*) 'u_adv'
-!~    if(l_verbose) write(*,*) u_adv
-!~    if(l_verbose) write(*,*) 'v_adv'
-!~    if(l_verbose) write(*,*) v_adv
-!~    if(l_verbose) write(*,*) 'theta_adv'
-!~    if(l_verbose) write(*,*) theta_adv
-!~    if(l_verbose) write(*,*) 'theta_rad'
-!~    if(l_verbose) write(*,*) theta_rad
-!~    if(l_verbose) write(*,*) 'rv_adv'
-!~    if(l_verbose) write(*,*) rv_adv
-!~    if(l_verbose) write(*,*) 'w'
-!~    if(l_verbose) write(*,*) w
-!~    if(l_verbose) write(*,*) 'theta_nudging'
-!~    if(l_verbose) write(*,*) theta_nudging
-!~    if(l_verbose) write(*,*) 'rv_nudging'
-!~    if(l_verbose) write(*,*) rv_nudging
-!~    if(l_verbose) write(*,*) 'u_nudging'
-!~    if(l_verbose) write(*,*) u_nudging
-!~    if(l_verbose) write(*,*) 'v_nudging'
-!~    if(l_verbose) write(*,*) v_nudging
-!~    if(l_verbose) write(*,*) 'nudging_inv_u_traj'
-!~    if(l_verbose) write(*,*) nudging_inv_u_traj
-!~    if(l_verbose) write(*,*) 'nudging_inv_v_traj'
-!~    if(l_verbose) write(*,*) nudging_inv_v_traj
-!~    if(l_verbose) write(*,*) 'nudging_inv_theta_traj'
-!~    if(l_verbose) write(*,*) nudging_inv_theta_traj
-!~    if(l_verbose) write(*,*) 'nudging_inv_rv_traj'
-!~    if(l_verbose) write(*,*) nudging_inv_rv_traj
+    write(*,*) 'lat_traj'
+    write(*,*) lat_traj
+    write(*,*) 'lon_traj'
+    write(*,*) lon_traj
+    write(*,*) 'ps_forc'
+    write(*,*) ps_forc
+    write(*,*) 'ts'
+    write(*,*) ts
+    write(*,*) 'sfc_sens_flx'
+    write(*,*) sfc_sens_flx
+    write(*,*) 'sfc_lat_flx'
+    write(*,*) sfc_lat_flx
+    write(*,*) 'z0_traj'
+    write(*,*) z0_traj
+    write(*,*) 'z0th_traj'
+    write(*,*) z0th_traj
+    write(*,*) 'ustar'
+    write(*,*) ustar
+    write(*,*) 'u_traj'
+    write(*,*) u_traj
+    write(*,*) 'v_traj'
+    write(*,*) v_traj
+    write(*,*) 'albedo_traj'
+    write(*,*) albedo_traj
+    write(*,*) 'q_skin_traj'
+    write(*,*) q_skin_traj
+
+    write(*,*) 'height_forc'
+    write(*,*) height_forc
+    write(*,*) 'pressure_forc'
+    write(*,*) pressure_forc
+    write(*,*) 'ug'
+    write(*,*) ug
+    write(*,*) 'vg'
+    write(*,*) vg
+    write(*,*) 'u_adv'
+    write(*,*) u_adv
+    write(*,*) 'v_adv'
+    write(*,*) v_adv
+    write(*,*) 'theta_adv'
+    write(*,*) theta_adv
+    write(*,*) 'theta_rad'
+    write(*,*) theta_rad
+    write(*,*) 'rv_adv'
+    write(*,*) rv_adv
+    write(*,*) 'w'
+    write(*,*) w
+    write(*,*) 'theta_nudging'
+    write(*,*) theta_nudging
+    write(*,*) 'rv_nudging'
+    write(*,*) rv_nudging
+    write(*,*) 'u_nudging'
+    write(*,*) u_nudging
+    write(*,*) 'v_nudging'
+    write(*,*) v_nudging
+    write(*,*) 'nudging_inv_u_traj'
+    write(*,*) nudging_inv_u_traj
+    write(*,*) 'nudging_inv_v_traj'
+    write(*,*) nudging_inv_v_traj
+    write(*,*) 'nudging_inv_theta_traj'
+    write(*,*) nudging_inv_theta_traj
+    write(*,*) 'nudging_inv_rv_traj'
+    write(*,*) nudging_inv_rv_traj
+
+end subroutine dephy_dirty_diagnostics
+
+end module dephy_forcings_mod
