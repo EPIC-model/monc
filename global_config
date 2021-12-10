@@ -111,7 +111,7 @@ l_constant_dtm=.false.
 
 # Debug assistance parameters
 print_debug_data=.false.         # Prints data for specific variables/points after each component call when .true.
-l_thoff=.false.                  # When .true., disables threading in the IOserver
+l_thoff=.true.                  # When .true., disables threading in the IOserver
 
 #Tracer configuration
 traj_interval=                   # name of config variable used to set 3d_tracers output_frequency
