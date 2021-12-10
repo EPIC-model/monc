@@ -3,16 +3,18 @@
 
 ! NOTES
 ! - Currently, surface pressure needs to be set in mcf still.
+! - GW Damping and grid also need to be set correctly in MCF
 ! - Module needs to be initialised after gridmanager but before random noise
 !   This may need to be checked
+! - Ensure PW advection does not clear source terms.
 ! - Note q in MONC is mixing ratio (rather than specific humidity, as is more usual)
 
 ! CURRENTLY TESTING
-! - Handle damping in prescribed fashion (could be a question for DEPHY community)?
+! - Handle nudging above clouds in prescribed fashion (could be a question for DEPHY community)?
 ! - Implement lat/lon dependence for radiation (socrates_opt%latitude,socrates_opt%longitude,socrates_opt%surface_albedo)
 
 ! TODO
-! - Surface pressure initialisation from file
+! - Surface pressure initialisation from file?
 ! - Implement consistency check for use_surface_boundary_conditions flag
 ! - Implement check that grid manager initialised but random noise hasn't been applied yet
 ! - Check for possible problematic nature of modifying both current state and vertical grid simultaneously
