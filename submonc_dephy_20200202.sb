@@ -11,7 +11,7 @@
 #SBATCH --ntasks-per-node=128
 #SBATCH --ntasks=2048
 #SBATCH --cpus-per-task=1
-#SBATCH --time=03:00:00
+#SBATCH --time=12:00:00
 #SBATCH --account=n02-NES015868
 #SBATCH --partition=standard
 #SBATCH --qos=standard
