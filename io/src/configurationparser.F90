@@ -29,14 +29,14 @@ module configuration_parser_mod
 
   interface get_data_value_by_field_name
      module procedure get_data_value_from_hashmap_by_field_name, get_data_value_from_map_by_field_name
-  end interface get_data_value_by_field_name
+  end interface get_data_value_by_field_name  
 
   type data_values_type
      integer :: data_type, dimensions, dim_sizes(4)
      real(kind=DEFAULT_PRECISION), dimension(:), allocatable :: values
      character(len=STRING_LENGTH), dimension(:), allocatable :: string_values
      type(map_type) :: map_values
-  end type data_values_type
+  end type data_values_type  
 
   !> Configuration that representes the state of a registered MONC process
   type io_configuration_registered_monc_type
@@ -45,7 +45,7 @@ module configuration_parser_mod
      character(len=STRING_LENGTH), dimension(:), allocatable :: definition_names
      integer :: active_threads, active_mutex, deactivate_condition_variable, local_dim_sizes(3), local_dim_starts(3), &
           local_dim_ends(3), source_id
-  end type io_configuration_registered_monc_type
+  end type io_configuration_registered_monc_type  
 
   !> Configuration associated with the representation of a specific data field
   type io_configuration_field_type
@@ -89,15 +89,15 @@ module configuration_parser_mod
   type io_configuration_file_writer_facet_type
      integer :: facet_type, time_manipulation_type
      real :: output_time_frequency
-     character(len=STRING_LENGTH) :: facet_name
-  end type io_configuration_file_writer_facet_type
+     character(len=STRING_LENGTH) :: facet_name     
+  end type io_configuration_file_writer_facet_type  
 
   type io_configuration_file_writer_type
      character(len=STRING_LENGTH) :: file_name, title
      integer :: number_of_contents, write_timestep_frequency, write_precision
      real :: write_time_frequency
      logical :: write_on_model_time, write_on_terminate, include_in_io_state_write, time_basis_override
-     type(io_configuration_file_writer_facet_type), dimension(:), allocatable :: contents
+     type(io_configuration_file_writer_facet_type), dimension(:), allocatable :: contents     
   end type io_configuration_file_writer_type
 
   !> Overall IO configuration
@@ -145,7 +145,7 @@ module configuration_parser_mod
 
   character(len=STRING_LENGTH), dimension(:), allocatable :: cond_request, diag_request, cond_long, diag_long
   integer :: ncond, ndiag
-
+  
   logical :: l_thoff=.false.
   logical :: time_basis=.false.
 
@@ -208,7 +208,7 @@ contains
             reading_buffer=new_line("A")
           else
             call log_log(LOG_ERROR, "Malformed IO XML, include directives must have filename in quotes")
-          end if
+          end if          
         else
           if (len_trim(reading_buffer) + len_trim(temp_line) .ge. FILE_STR_STRIDE) then
             call add_in_specific_line(io_xml, reading_buffer)
@@ -265,7 +265,7 @@ contains
     allocate(building_config%registered_moncs(MONC_SIZE_STRIDE))
     parsed_configuration=building_config
     parsed_configuration%number_inter_io_communications=0
-    parsed_configuration%general_info_set=.false.
+    parsed_configuration%general_info_set=.false.    
     call c_free(data_field_names)
     allocate(parsed_configuration%text_configuration(size(raw_configuration)), source=raw_configuration)
   end subroutine configuration_parse
@@ -283,14 +283,14 @@ contains
     call c_put_integer(building_config%dimension_sizing, "zn", dim_size)
     call c_put_integer(building_config%dimension_sizing, "qfields", &
          options_get_integer(provided_options_database, "number_q_fields"))
-
+    
     call c_put_integer(building_config%dimension_sizing, "number_options", c_size(provided_options_database))
     call c_put_integer(building_config%dimension_sizing, "active_q_indicies", get_number_active_q_indices())
-
+         
     if (options_get_logical(options_database, "tracers_enabled")) then
       if (options_get_logical(options_database, "trajectories_enabled")) then
         n_tracers = 5
-      end if
+      end if    
       if (options_get_logical(options_database, "radioactive_tracers_enabled")) then
         n_tracers = n_tracers + options_get_integer(provided_options_database, "n_radioactive_tracers")
       end if
@@ -300,7 +300,7 @@ contains
     !> Since the model appears to write each of the items in dimension_sizing as dimensions in every
     !  netcdf file, only let these exist when the corresponding code is enabled.
     if (options_get_logical(options_database, "conditional_diagnostics_column_enabled")) then
-      ncond = options_get_array_size(options_database, "cond_request")*2
+      ncond = options_get_array_size(options_database, "cond_request")*2 
       allocate(cond_request(ncond))
       allocate(cond_long(ncond))
       call c_put_integer(building_config%dimension_sizing, "nc", ncond)
@@ -308,21 +308,21 @@ contains
       allocate(diag_request(ndiag))
       allocate(diag_long(ndiag))
       call c_put_integer(building_config%dimension_sizing, "nd", ndiag)
-    end if
+    end if 
     if (options_get_logical(options_database, "pdf_analysis_enabled" )) then
       dim_size = options_get_integer(options_database, "n_w_bins")
       call c_put_integer(building_config%dimension_sizing, "n_w_bins", dim_size)
-    end if
+    end if 
 
-  end subroutine add_in_dimensions
-
+  end subroutine add_in_dimensions  
+  
   !> XML element start (opening) call back. This handles most of the configuration parsing
   !! @param element_name Name of the XML element
   !! @param number_of_attributes The number of attributes associated with this XML element
   !! @param attribute_names Each attribute name (same location as attribute value)
   !! @param attribute_values Each attribute value (same location as attribute name)
   subroutine start_element_callback(element_name, number_of_attributes, attribute_names, attribute_values)
-    character(len=*), intent(in) :: element_name
+    character(len=*), intent(in) :: element_name       
     character(len=*), dimension(:), intent(in) :: attribute_names, attribute_values
     integer, intent(in) :: number_of_attributes
 
@@ -338,7 +338,7 @@ contains
       else
         if (element_name == "diagnostic") then
           call define_diagnostic(attribute_names, attribute_values)
-          inside_diagnostic_config=.true.
+          inside_diagnostic_config=.true.        
         end if
       end if
     else if (inside_server_config) then
@@ -388,7 +388,7 @@ contains
       building_config%data_definitions(current_building_definition)%number_of_data_fields=current_building_field-1
       do i=1, current_building_field-1
         building_config%data_definitions(current_building_definition)%fields(i)%namespace=&
-             building_config%data_definitions(current_building_definition)%namespace
+             building_config%data_definitions(current_building_definition)%namespace        
       end do
       current_building_field=1
       building_config%number_of_data_definitions=current_building_definition
@@ -414,7 +414,7 @@ contains
     else if (element_name == "file") then
       current_building_file_writer=current_building_file_writer+1
       inside_specific_file_writing=.false.
-    end if
+    end if    
   end subroutine end_element_callback
 
   subroutine handle_thread_pool_configuration(attribute_names, attribute_values)
@@ -423,11 +423,11 @@ contains
     integer :: number_index
 
     number_index=get_field_index_from_name(attribute_names, "number")
-
+    
     if (number_index /= 0) then
       building_config%number_of_threads=conv_to_integer(attribute_values(number_index))
-    end if
-  end subroutine handle_thread_pool_configuration
+    end if    
+  end subroutine handle_thread_pool_configuration  
 
   !> Creates a new data definition configuration item based upon the attributes supplied
   !! @param number_of_attributes Number of XML attributes associated with this element
@@ -451,7 +451,7 @@ contains
            conv_to_integer(retrieve_string_value(attribute_values(frequency_index), INTEGER_DATA_TYPE))
       if (namespace_index /= 0) then
         namespace=retrieve_string_value(attribute_values(namespace_index), STRING_DATA_TYPE)
-        building_config%data_definitions(current_building_definition)%namespace=namespace
+        building_config%data_definitions(current_building_definition)%namespace=namespace             
       else
         namespace=""
         building_config%data_definitions(current_building_definition)%namespace=""
@@ -461,10 +461,10 @@ contains
              retrieve_string_value(attribute_values(send_on_termination_index), STRING_DATA_TYPE) == "true"
       else
         building_config%data_definitions(current_building_definition)%send_on_terminate=.false.
-      end if
+      end if      
     else
       call log_log(LOG_ERROR, "A data definition requires a name and frequency")
-    end if
+    end if    
     allocate(building_config%data_definitions(current_building_definition)%fields(DATA_SIZE_STRIDE))
 
     building_config%data_definitions(current_building_definition)%fields(1)%name="timestep"
@@ -498,7 +498,7 @@ contains
   end subroutine handle_new_data_definition
 
   subroutine add_misc_member_to_diagnostic(element_name, attribute_names, attribute_values)
-    character(len=*), intent(in) :: element_name
+    character(len=*), intent(in) :: element_name       
     character(len=*), dimension(:), intent(in) :: attribute_names, attribute_values
 
     type(io_configuration_misc_item_type), pointer :: misc_member
@@ -518,7 +518,7 @@ contains
   end subroutine add_misc_member_to_diagnostic
 
   subroutine add_diagnostic_field_to_group(element_name, attribute_names, attribute_values)
-    character(len=*), intent(in) :: element_name
+    character(len=*), intent(in) :: element_name       
     character(len=*), dimension(:), intent(in) :: attribute_names, attribute_values
 
     integer :: field_index
@@ -531,14 +531,14 @@ contains
       else
         call log_log(LOG_ERROR, "A diagnostics group member requires a name")
       end if
-    else
+    else      
         call log_log(LOG_ERROR, "Unrecognised diagnostics group participant, name is '"//trim(element_name)//"'")
     end if
-  end subroutine add_diagnostic_field_to_group
+  end subroutine add_diagnostic_field_to_group  
 
-  subroutine define_group(attribute_names, attribute_values)
+  subroutine define_group(attribute_names, attribute_values)      
     character(len=*), dimension(:), intent(in) :: attribute_names, attribute_values
-
+   
     integer :: field_index
 
     if (current_building_group .gt. size(building_config%groups)) call extend_groups_array()
@@ -588,8 +588,8 @@ contains
           if (trim(retrieve_string_value(attribute_values(field_index), STRING_DATA_TYPE)) .eq. "io") then
             building_config%file_writers(current_building_file_writer)%contents(number_of_contents)%facet_type=IO_STATE_TYPE
           end if
-        end if
-      end if
+        end if        
+      end if      
     end if
 
     if (building_config%file_writers(current_building_file_writer)%contents(number_of_contents)%facet_type == 0) then
@@ -598,8 +598,8 @@ contains
 
     building_config%file_writers(current_building_file_writer)%number_of_contents=&
          building_config%file_writers(current_building_file_writer)%number_of_contents+1
-  end subroutine add_include_to_file_writer
-
+  end subroutine add_include_to_file_writer  
+  
   subroutine add_include_group_or_field_to_file_writer(attribute_names, attribute_values, number_of_contents)
     character(len=*), dimension(:), intent(in) :: attribute_names, attribute_values
     integer, intent(in) :: number_of_contents
@@ -639,7 +639,7 @@ contains
     end if
   end subroutine add_include_group_or_field_to_file_writer
 
-  subroutine define_file_writer(attribute_names, attribute_values)
+  subroutine define_file_writer(attribute_names, attribute_values)     
     character(len=*), dimension(:), intent(in) :: attribute_names, attribute_values
 
     integer :: field_index
@@ -656,15 +656,15 @@ contains
     end if
 
     field_index=get_field_index_from_name(attribute_names, "write_time_frequency")
-    if (field_index .gt. 0) then
+    if (field_index .gt. 0) then    
       building_config%file_writers(current_building_file_writer)%write_time_frequency=&
            conv_to_real(retrieve_string_value(attribute_values(field_index), DOUBLE_DATA_TYPE))
-      building_config%file_writers(current_building_file_writer)%write_on_model_time=.true.
-      building_config%file_writers(current_building_file_writer)%time_basis_override=.false.
+      building_config%file_writers(current_building_file_writer)%write_on_model_time=.true.     
+      building_config%file_writers(current_building_file_writer)%time_basis_override=.false. 
     else
       field_index=get_field_index_from_name(attribute_names, "write_timestep_frequency")
       if (field_index .gt. 0) then
-        if (time_basis) then ! system-wide transform to time units over timestep tracking
+        if (time_basis) then ! system-wide transform to time units over timestep tracking 
                         ! overriding write_timestep_frequency with write_time_frequency instead
                         ! and turns on write_on_model_time.
                         ! The override affects checkpointing in particular.
@@ -673,9 +673,9 @@ contains
           building_config%file_writers(current_building_file_writer)%write_on_model_time=.true.
           building_config%file_writers(current_building_file_writer)%time_basis_override=.true.
         else
-        building_config%file_writers(current_building_file_writer)%write_timestep_frequency=&
+          building_config%file_writers(current_building_file_writer)%write_timestep_frequency=&
             conv_to_integer(retrieve_string_value(attribute_values(field_index), INTEGER_DATA_TYPE))
-        building_config%file_writers(current_building_file_writer)%write_on_model_time=.false.
+          building_config%file_writers(current_building_file_writer)%write_on_model_time=.false. 
           building_config%file_writers(current_building_file_writer)%time_basis_override=.false.
         end if ! check for time_basis
       else
@@ -684,25 +684,23 @@ contains
     end if
 
     field_index=get_field_index_from_name(attribute_names, "title")
-    if (field_index .gt. 0) then
+    if (field_index .gt. 0) then 
       building_config%file_writers(current_building_file_writer)%title=&
            retrieve_string_value(attribute_values(field_index), STRING_DATA_TYPE)
     else
       building_config%file_writers(current_building_file_writer)%title=DEFAULT_FILE_TITLE
-    end if
+    end if    
 
     field_index=get_field_index_from_name(attribute_names, "write_on_terminate")
-    if (field_index .gt. 0) then
+    if (field_index .gt. 0) then 
       building_config%file_writers(current_building_file_writer)%write_on_terminate=&
            retrieve_string_value(attribute_values(field_index), STRING_DATA_TYPE) == "true"
-      if (building_config%file_writers(current_building_file_writer)%write_on_model_time) &
-        call log_log(LOG_ERROR, "Inconsitent settings.  write_on_terminate cannot be used with write_on_model_time")
     else
       building_config%file_writers(current_building_file_writer)%write_on_terminate=.false.
     end if
 
     field_index=get_field_index_from_name(attribute_names, "store_state")
-    if (field_index .gt. 0) then
+    if (field_index .gt. 0) then 
       building_config%file_writers(current_building_file_writer)%include_in_io_state_write=&
            retrieve_string_value(attribute_values(field_index), STRING_DATA_TYPE) == "true"
     else
@@ -721,19 +719,19 @@ contains
       building_config%file_writers(current_building_file_writer)%write_precision = NF90_DOUBLE
     end if
 
-
+    
     building_config%file_writers(current_building_file_writer)%number_of_contents=0
-    allocate(building_config%file_writers(current_building_file_writer)%contents(DATA_SIZE_STRIDE))
-  end subroutine define_file_writer
+    allocate(building_config%file_writers(current_building_file_writer)%contents(DATA_SIZE_STRIDE))    
+  end subroutine define_file_writer  
 
   !> Defines a new data handling rule
   !! @param element_name The name of the XML element
   !! @param number_of_attributes Number of XML attributes associated with this element
   !! @param attribute_names Each attribute name (same location as attribute value)
   !! @param attribute_values Each attribute value (same location as attribute name)
-  subroutine define_diagnostic(attribute_names, attribute_values)
+  subroutine define_diagnostic(attribute_names, attribute_values)   
     character(len=*), dimension(:), intent(in) :: attribute_names, attribute_values
-
+   
     integer :: field_index, type_field_index, data_field_index
     character(len=STRING_LENGTH) :: field_type_str, field_data_type_str, size_definitions
 
@@ -770,7 +768,7 @@ contains
            building_config%diagnostics(current_building_diagnostic)%field_type == MAP_FIELD_TYPE) then
         field_index=get_field_index_from_name(attribute_names, "size")
         if (field_index .ne. 0) then
-          size_definitions=retrieve_string_value(attribute_values(field_index), STRING_DATA_TYPE)
+          size_definitions=retrieve_string_value(attribute_values(field_index), STRING_DATA_TYPE)      
           building_config%diagnostics(current_building_diagnostic)%dimensions=process_sizing_definition(size_definitions, &
                building_config%diagnostics(current_building_diagnostic)%dim_size_defns)
         else
@@ -779,7 +777,7 @@ contains
         field_index=get_field_index_from_name(attribute_names, "collective")
         if (field_index .ne. 0) then
           building_config%diagnostics(current_building_diagnostic)%collective=&
-               retrieve_string_value(attribute_values(field_index), STRING_DATA_TYPE) == "true"
+               retrieve_string_value(attribute_values(field_index), STRING_DATA_TYPE) == "true" 
         else
           building_config%diagnostics(current_building_diagnostic)%collective=.false.
         end if
@@ -812,7 +810,7 @@ contains
     if (cp .le. len(size_definitions)) then
       individual_str_defn(sizing_index)=trim(size_definitions(cp:))
       sizing_index=sizing_index+1
-    end if
+    end if    
     process_sizing_definition=sizing_index-1
   end function process_sizing_definition
 
@@ -822,12 +820,12 @@ contains
   !! @param number_of_attributes Number of XML attributes associated with this element
   !! @param attribute_names Each attribute name (same location as attribute value)
   !! @param attribute_values Each attribute value (same location as attribute name)
-  subroutine process_xml_into_field_description(attribute_names, attribute_values)
+  subroutine process_xml_into_field_description(attribute_names, attribute_values)    
     character(len=*), dimension(:), intent(in) :: attribute_names, attribute_values
 
     character(len=STRING_LENGTH) :: field_type_str, field_data_type_str, sizing_defn_str
     integer :: name_field_index, type_field_index, data_field_index, field_index, optional_field_index, idx
-
+    
 
     name_field_index=get_field_index_from_name(attribute_names, "name")
     type_field_index=get_field_index_from_name(attribute_names, "type")
@@ -870,7 +868,7 @@ contains
         field_index=get_field_index_from_name(attribute_names, "collective")
         if (field_index .ne. 0) then
           building_config%data_definitions(current_building_definition)%fields(current_building_field)%collective=&
-               retrieve_string_value(attribute_values(field_index), STRING_DATA_TYPE) == "true"
+               retrieve_string_value(attribute_values(field_index), STRING_DATA_TYPE) == "true" 
         else
           building_config%data_definitions(current_building_definition)%fields(current_building_field)%collective=.false.
         end if
@@ -885,14 +883,14 @@ contains
       else
         building_config%data_definitions(current_building_definition)%fields(current_building_field)%units=""
       end if
-
+            
       field_data_type_str=retrieve_string_value(attribute_values(data_field_index), STRING_DATA_TYPE)
       building_config%data_definitions(current_building_definition)%fields(current_building_field)%data_type=&
            get_field_datatype_from_attribute(field_data_type_str)
 
       if (building_config%data_definitions(current_building_definition)%fields(current_building_field)%data_type==0) then
         call log_log(LOG_ERROR, "The field data type of '"//trim(field_data_type_str)//"' is not recognised")
-      end if
+      end if      
 
       if (building_config%data_definitions(current_building_definition)%fields(current_building_field)%field_type == &
            MAP_FIELD_TYPE .and. building_config%data_definitions(current_building_definition)%fields(&
@@ -909,7 +907,7 @@ contains
         end if
       else
         building_config%data_definitions(current_building_definition)%fields(current_building_field)%optional=.false.
-      end if
+      end if      
       current_building_field=current_building_field+1
     end if
   end subroutine process_xml_into_field_description
@@ -921,7 +919,7 @@ contains
     if (field_type_str == "scalar") get_field_type_from_attribute=SCALAR_FIELD_TYPE
     if (field_type_str == "array") get_field_type_from_attribute=ARRAY_FIELD_TYPE
     if (field_type_str == "map") get_field_type_from_attribute=MAP_FIELD_TYPE
-  end function get_field_type_from_attribute
+  end function get_field_type_from_attribute  
 
   integer function get_field_datatype_from_attribute(field_data_type_str)
     character(len=*), intent(in) :: field_data_type_str
@@ -932,7 +930,7 @@ contains
     if (field_data_type_str == "string") get_field_datatype_from_attribute=STRING_DATA_TYPE
     if (field_data_type_str == "float") get_field_datatype_from_attribute=FLOAT_DATA_TYPE
     if (field_data_type_str == "double") get_field_datatype_from_attribute=DOUBLE_DATA_TYPE
-  end function get_field_datatype_from_attribute
+  end function get_field_datatype_from_attribute  
 
   !> Replaces specific characters in a string and returns a new string with this replaced by nothing (i.e. removed)
   !! @param original_string The original string the process
@@ -953,7 +951,7 @@ contains
         occurance=len(original_string)
       else
         occurance=occurance+current_index
-      end if
+      end if      
       new_string=trim(new_string)//trim(original_string(current_index:occurance-len(to_replace)-1))
       current_index=current_index+occurance+len(to_replace)-2
     end do
@@ -982,19 +980,19 @@ contains
             retrieve_string_value=conv_to_string(options_get_real(options_database, lookup_key))
           else if (field_value_type==STRING_DATA_TYPE) then
             retrieve_string_value=options_get_string(options_database, lookup_key)
-          end if
+          end if          
         else
           call log_log(LOG_ERROR, "Can not find IO configuration key '"//trim(lookup_key)//"' in the options database")
         end if
-      end if
-    end if
-  end function retrieve_string_value
+      end if      
+    end if    
+  end function retrieve_string_value  
 
   !> Given the name of an attribute will return the index of this in the names collection or 0 if it is not found
   !! @param attribute_names Collection of attribute names
   !! @param search_name The name to search for
   integer function get_field_index_from_name(attribute_names, search_name)
-    character(len=*), intent(in) :: search_name
+    character(len=*), intent(in) :: search_name       
     character(len=*), dimension(:) :: attribute_names
 
     integer :: i, size_of_names
@@ -1004,10 +1002,10 @@ contains
       if (attribute_names(i) == search_name) then
         get_field_index_from_name=i
         return
-      end if
-    end do
+      end if      
+    end do  
     get_field_index_from_name=0
-  end function get_field_index_from_name
+  end function get_field_index_from_name  
 
   !> Extends the array of inter io communications from its current suze to current size+data_stride+current size deficit
   !! @param io_configuration The IO server configuration state
@@ -1028,7 +1026,7 @@ contains
     type(io_configuration_file_writer_facet_type), dimension(:), allocatable :: temp_filewriter_contents
 
     allocate(temp_filewriter_contents(lbound(building_config%file_writers(current_building_file_writer)%contents,1): &
-         ubound(building_config%file_writers(current_building_file_writer)%contents,1)+DATA_SIZE_STRIDE))
+         ubound(building_config%file_writers(current_building_file_writer)%contents,1)+DATA_SIZE_STRIDE)) 
     temp_filewriter_contents(lbound(building_config%file_writers(current_building_file_writer)%contents,1):&
          ubound(building_config%file_writers(current_building_file_writer)%contents,1)) = &
          building_config%file_writers(current_building_file_writer)%contents
@@ -1038,34 +1036,34 @@ contains
   subroutine extend_file_writer_array()
     type(io_configuration_file_writer_type), dimension(:), allocatable :: temp_filewriter
 
-    allocate(temp_filewriter(lbound(building_config%file_writers,1): ubound(building_config%file_writers,1)+DATA_SIZE_STRIDE))
+    allocate(temp_filewriter(lbound(building_config%file_writers,1): ubound(building_config%file_writers,1)+DATA_SIZE_STRIDE)) 
     temp_filewriter(lbound(building_config%file_writers,1):ubound(building_config%file_writers,1)) = building_config%file_writers
     call move_alloc(from=temp_filewriter,to=building_config%file_writers)
-  end subroutine extend_file_writer_array
+  end subroutine extend_file_writer_array  
 
   !> Extends the rules array of a specific rule from the current size to the current size + data size stride
   subroutine extend_diagnostics_array()
     type(io_configuration_diagnostic_field_type), dimension(:), allocatable :: temp_diagnostics
 
-    allocate(temp_diagnostics(lbound(building_config%diagnostics,1): ubound(building_config%diagnostics,1)+DATA_SIZE_STRIDE))
+    allocate(temp_diagnostics(lbound(building_config%diagnostics,1): ubound(building_config%diagnostics,1)+DATA_SIZE_STRIDE)) 
     temp_diagnostics(lbound(building_config%diagnostics,1):ubound(building_config%diagnostics,1)) = building_config%diagnostics
     call move_alloc(from=temp_diagnostics,to=building_config%diagnostics)
-  end subroutine extend_diagnostics_array
+  end subroutine extend_diagnostics_array  
 
   subroutine extend_groups_array()
     type(io_configuration_group_type), dimension(:), allocatable :: temp_groups
 
-    allocate(temp_groups(lbound(building_config%groups,1): ubound(building_config%groups,1)+DATA_SIZE_STRIDE))
+    allocate(temp_groups(lbound(building_config%groups,1): ubound(building_config%groups,1)+DATA_SIZE_STRIDE)) 
     temp_groups(lbound(building_config%groups,1):ubound(building_config%groups,1)) = building_config%groups
     call move_alloc(from=temp_groups,to=building_config%groups)
-  end subroutine extend_groups_array
+  end subroutine extend_groups_array  
 
   !> Extends the fields array of the current data definition from the current size to the current size + data size stride
   subroutine extend_field_array()
     type(io_configuration_field_type), dimension(:), allocatable :: temp_fields
 
     allocate(temp_fields(lbound(building_config%data_definitions(current_building_definition)%fields,1):&
-         ubound(building_config%data_definitions(current_building_definition)%fields,1)+DATA_SIZE_STRIDE))
+         ubound(building_config%data_definitions(current_building_definition)%fields,1)+DATA_SIZE_STRIDE)) 
     temp_fields(lbound(building_config%data_definitions(current_building_definition)%fields,1):&
          ubound(building_config%data_definitions(current_building_definition)%fields,1)) = &
          building_config%data_definitions(current_building_definition)%fields
@@ -1077,11 +1075,11 @@ contains
     type(io_configuration_data_definition_type), dimension(:), allocatable :: temp_data_definitions
 
     allocate(temp_data_definitions(lbound(building_config%data_definitions, 1):&
-         ubound(building_config%data_definitions,1)+DATA_SIZE_STRIDE))
+         ubound(building_config%data_definitions,1)+DATA_SIZE_STRIDE)) 
     temp_data_definitions(lbound(building_config%data_definitions, 1):&
          ubound(building_config%data_definitions, 1)) = building_config%data_definitions
     call move_alloc(from=temp_data_definitions,to=building_config%data_definitions)
-  end subroutine extend_data_definition_array
+  end subroutine extend_data_definition_array 
 
   !> Extends the data definitions array from the current size to the current size + data size stride
   !! @param io_configuration IO server configuration state
@@ -1091,7 +1089,7 @@ contains
     type(io_configuration_registered_monc_type), dimension(:), allocatable :: temp_registered_moncs
 
     allocate(temp_registered_moncs(lbound(io_configuration%registered_moncs, 1):&
-         io_configuration%number_of_moncs+MONC_SIZE_STRIDE))
+         io_configuration%number_of_moncs+MONC_SIZE_STRIDE)) 
     temp_registered_moncs(lbound(io_configuration%registered_moncs, 1):&
          ubound(io_configuration%registered_moncs, 1)) = io_configuration%registered_moncs
     call move_alloc(from=temp_registered_moncs,to=io_configuration%registered_moncs)
@@ -1111,8 +1109,8 @@ contains
       if (io_configuration%data_definitions(i)%name .eq. key) then
         retrieve_data_definition=i
         return
-      end if
-    end do
+      end if      
+    end do    
     retrieve_data_definition=0
   end function retrieve_data_definition
 
@@ -1183,9 +1181,9 @@ contains
         build_field_description_type_from_configuration(field_index)%optional=&
              io_configuration%data_definitions(i)%fields(j)%optional
         field_index=field_index+1
-      end do
-    end do
-  end function build_field_description_type_from_configuration
+      end do      
+    end do    
+  end function build_field_description_type_from_configuration  
 
   !> Retrieves the total number of fields held in all data definitions
   !! @param io_configuration The IO server configuration
@@ -1198,9 +1196,9 @@ contains
     get_total_number_fields=0
     do i=1, io_configuration%number_of_data_definitions
       get_total_number_fields=get_total_number_fields+io_configuration%data_definitions(i)%number_of_data_fields
-    end do
+    end do    
   end function get_total_number_fields
-
+  
   !> Retrieves the number of field dimensions that a specific field has from a MONC process within a data definition. This
   !! is determined by the MONC process when it registers with the IO server and can be different from one to another
   !! @param io_configuration The IO server configuration
@@ -1239,7 +1237,7 @@ contains
     else
       get_data_value_from_hashmap_by_field_name=>null()
     end if
-  end function get_data_value_from_hashmap_by_field_name
+  end function get_data_value_from_hashmap_by_field_name  
 
   !> Retrieves the data value (wrapper) by field name or null if no entry was found in the provided collection
   !! @param collection A map to search for this data value in
@@ -1343,7 +1341,7 @@ contains
       end do
     end do
     get_prognostic_field_configuration=.false.
-  end function get_prognostic_field_configuration
+  end function get_prognostic_field_configuration  
 
   !> Adds a specific line into the io xml. The IO XML is always exactly the correct size, so here is either allocated or
   !! resized to match what the read buffer requires

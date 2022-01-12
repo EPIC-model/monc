@@ -220,29 +220,6 @@ contains
     tend_pr_tot_tabs_sw(:) = 0.0_DEFAULT_PRECISION
     tend_pr_tot_tabs_total(:) = 0.0_DEFAULT_PRECISION
 
-    ! Allocate 3d tendency fields upon availability
-    !  using 'k_top' for these diagnostics would be problematic if the Z_INDEX halos were ever nonzero.
-    allocate( tend_3d_tabs_lw(k_top,y_nohalos,x_nohalos))
-    allocate( tend_3d_tabs_sw(k_top,y_nohalos,x_nohalos))
-    allocate( tend_3d_tabs_total(k_top,y_nohalos,x_nohalos))
-    allocate( tend_pr_tot_th_lw(k_top))
-    allocate( tend_pr_tot_th_sw(k_top))
-    allocate( tend_pr_tot_th_total(k_top))
-    allocate( tend_pr_tot_tabs_lw(k_top))
-    allocate( tend_pr_tot_tabs_sw(k_top))
-    allocate( tend_pr_tot_tabs_total(k_top))
-
-    ! Initialise allocates tendency variable to 0.
-    tend_3d_tabs_lw(:,:,:) = 0.0_DEFAULT_PRECISION
-    tend_3d_tabs_sw(:,:,:) = 0.0_DEFAULT_PRECISION
-    tend_3d_tabs_total(:,:,:) = 0.0_DEFAULT_PRECISION
-    tend_pr_tot_th_lw(:) = 0.0_DEFAULT_PRECISION
-    tend_pr_tot_th_sw(:) = 0.0_DEFAULT_PRECISION
-    tend_pr_tot_th_total(:) = 0.0_DEFAULT_PRECISION
-    tend_pr_tot_tabs_lw(:) = 0.0_DEFAULT_PRECISION
-    tend_pr_tot_tabs_sw(:) = 0.0_DEFAULT_PRECISION
-    tend_pr_tot_tabs_total(:) = 0.0_DEFAULT_PRECISION
-
     ! derive density and radiation factor for heating rate calculation
     socrates_derived_fields%density_factor(1) =  0.0_DEFAULT_PRECISION
     do k = 2, k_top
