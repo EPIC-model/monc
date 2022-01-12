@@ -894,23 +894,6 @@ contains
       end if !enabled
 
     end do
-      ! Verify valid configuration of SOCRATES radiation diagnostics
-      if (socrates_enabled .and. radiation_interval .gt. 0 .and. &
-          definition_descriptions(definition_index)%frequency .gt. 0) then
-        if (any(field_descriptions(i)%field_name .eq. socrates_descriptor%published_fields(:))) then
-          if (mod(definition_descriptions(definition_index)%frequency, radiation_interval) .ne. 0 .or. &
-              definition_descriptions(definition_index)%frequency .lt. radiation_interval) then
-            call log_master_log(LOG_ERROR, "To guarantee availability of radiation "//&
-             "diagnostics, the sampling interval (currently: "//&
-                trim(conv_to_string(definition_descriptions(definition_index)%frequency))//&
-             ") of the diagnostic ("//trim(field_descriptions(i)%field_name)//&
-             ") must be a MULTIPLE of AND .GE. the radiation calculation interval "//&
-             "(currently: rad_interval="//trim(conv_to_string(radiation_interval))//&
-             ").  This means radiation diagnostics cannot be sampled between calculations."//&
-             "  Check variable's sampling interval (frequency=#) in the xml data-definition." )
-          end if !err
-        end if !compare
-      end if !enabled
 
   end subroutine populate_data_definition_configuration
 
