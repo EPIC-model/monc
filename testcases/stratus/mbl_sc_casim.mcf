@@ -20,7 +20,7 @@ casim_enabled=.true.
 casim_profile_dgs_enabled=.true.
 coriolis_enabled=.true.
 damping_enabled=.true.
-forcing_enabled=.true. 
+forcing_enabled=.true.
 galilean_transformation=.true. # Needs debugging
 randomnoise_enabled=.true.
 mean_profiles_enabled=.true. #This must be set to true if running with damping
@@ -103,7 +103,7 @@ l_init_pl_q=.true.
 names_init_pl_q=vapour
 z_init_pl_q=0.0, 600.0, 601.0, 1600.0
 f_init_pl_q=9.1e-3, 9.1e-3, 6.1e-3, 5.6e-3
-  
+
 l_matchthref=.false.
 
 # Random noise
@@ -133,7 +133,7 @@ hdmp=650.0
 # Subsidence profile
 l_subs_pl_theta=.true.
 z_subs_pl=0.0, 1600.0
-f_subs_pl=0.000005,0.000005 
+f_subs_pl=0.000005,0.000005
 l_subs_pl_q=.true.
 
 #SUBSIDENCE=1, DIVERGENCE=0
@@ -146,13 +146,13 @@ subsidence_local_q=.true.
 # type_of_surface_boundary_conditions=PRESCRIBED_SURFACE_VALUE=1
 use_surface_boundary_conditions=.true.
 use_time_varying_surface_values= .false.
-type_of_surface_boundary_conditions = 1 
+type_of_surface_boundary_conditions = 1
 surface_boundary_input_times = 0
 surface_temperatures  = 288.2
 #surface_latent_heat_flux   = 130.052
 #surface_sensible_heat_flux = 8.04
 
-# Radiation settings - variables and switches for exponential radiation (LWEXP) 
+# Radiation settings - variables and switches for exponential radiation (LWEXP)
 longwave_exp_decay = 130.0 # longwave rad exponential decay factor
 cltop_longwave_flux = 70.0 # cloud top longwave flux (Wm-2)
 clbase_longwave_flux = 0.0 # cloud base longwave flux (Wm-2)
@@ -182,8 +182,8 @@ spectral_file_sw           = /home/ade/socrates/data/spectra/ga7/sp_sw_ga7
 i_cloud_representation  = 2
 
 ## Time and location variables for socrates
-l_360 = .true.           #  360 days in year as opposed to 365 (a UM thing 
-                         #  in the LEM, is this still required??)     
+l_360 = .true.           #  360 days in year as opposed to 365 (a UM thing
+                         #  in the LEM, is this still required??)
 l_solar_fixed  = .false. # true equals fixed insolation using value in sol_fixed
 l_no_solar     = .true.  # no solar, only longwave
 solar_fixed    = 1361.0  # prescribed insolation value
@@ -193,7 +193,7 @@ longitude      = -123.0  # longitude for the location of radiation calc
 rad_start_year = 1987.0  # simulation year for earth sun distance
 rad_start_day  = 180.0   # day number from January 1st
 rad_start_time = 10.0    # Start time for the radiation
-rad_interval   = 12      # Radiation calculation interval [integer, unit depends on time_basis]
+rad_interval   = 75      # Radiation calculation interval [integer, unit depends on time_basis]
 
 ## Surface albedo variables for socrates
 l_variable_srf_albedo = .false. # not coded yet but will allow variable
@@ -202,7 +202,7 @@ surface_albedo = 0.04    # surface albedo (fixed in time)
 
 mphys_nq_l=1 # cloud liquid mass
 mphys_nd_l=0 # cloud drop number
-mphys_nq_r=0 # rain mass	
+mphys_nq_r=0 # rain mass
 mphys_nq_i=0 # ice mass
 mphys_nq_s=0 # snow mass
 mphys_nq_g=0 # graupel mass

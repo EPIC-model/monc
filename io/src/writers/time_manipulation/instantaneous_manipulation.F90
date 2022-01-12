@@ -5,7 +5,7 @@ module instantaneous_time_manipulation_mod
        c_get_real, c_contains, c_size, c_has_next
   use conversions_mod, only : conv_single_real_to_double
   use forthread_mod, only : forthread_mutex_init, forthread_mutex_lock, forthread_mutex_unlock, forthread_mutex_destroy
-  use threadpool_mod, only : check_thread_status 
+  use threadpool_mod, only : check_thread_status
   use configuration_parser_mod, only : data_values_type
   use data_utils_mod, only : unpack_scalar_integer_from_bytedata, unpack_scalar_string_from_bytedata, &
        unpack_scalar_dp_real_from_bytedata
@@ -47,7 +47,7 @@ contains
     is_instantaneous_time_manipulation_ready_to_write=latest_time + output_frequency .ge. write_time
   end function is_instantaneous_time_manipulation_ready_to_write
 
-  !> Performs the instantaneous time manipulation and returns data only if this is to be written to the 
+  !> Performs the instantaneous time manipulation and returns data only if this is to be written to the
   !! storage. Internally a state is maintained which tracks when the write was last done to allow for flexibility in the
   !! time criteria.
   !! @param instant_values The instantaneous values to work with
@@ -73,7 +73,7 @@ contains
       do i=1,size(instant_values)
         perform_instantaneous_time_manipulation%values(i)=instant_values(i)
       end do
-    end if    
+    end if
   end function perform_instantaneous_time_manipulation
 
   !> Determines whether to issue values for write or not. This depends on the time and output frequency
@@ -94,12 +94,13 @@ contains
     call check_thread_status(forthread_mutex_lock(existing_instantaneous_writes_mutex))
     if (c_contains(existing_instantaneous_writes, field_name)) then
       previous_time_write=real(c_get_real(existing_instantaneous_writes, field_name))
-      time_difference = real(time) - previous_time_write
-    else
-      time_difference = real(time) - real(model_initial_time)
+    else ! Typically at first use of function
+      previous_time_write = real(model_initial_time) - mod(real(model_initial_time), output_frequency)
     end if
-    
-    ! time_basis requires regular-interval entries.  Timestep requires time .ge. time+previous_output_time
+
+    time_difference = real(time) - previous_time_write
+
+    ! time_basis requires regular-interval entries.  Timestep requires time .ge. previous_output_time+output_frequency
     if (time_basis) then
       select_value = mod(nint(time), nint(output_frequency)) == 0
     else
@@ -119,11 +120,11 @@ contains
   !! @returns The number of bytes needed to store the serialised state
   integer(kind=8) function prepare_to_serialise_instantaneous_state()
     real(kind=DEFAULT_PRECISION) :: a
-    
+
     call check_thread_status(forthread_mutex_lock(existing_instantaneous_writes_mutex))
     prepare_to_serialise_instantaneous_state=kind(prepare_to_serialise_instantaneous_state) + &
          ((STRING_LENGTH + kind(a)) * c_size(existing_instantaneous_writes))
-  end function prepare_to_serialise_instantaneous_state  
+  end function prepare_to_serialise_instantaneous_state
 
   !> Will serialise the state of this manipulator so that it can be later restarted. Any locks issued during preparation
   !! are released here
@@ -134,7 +135,7 @@ contains
     integer :: current_data_point
     type(mapentry_type) :: map_entry
     type(iterator_type) :: iterator
-    
+
     current_data_point=1
     current_data_point=pack_scalar_field(byte_data, current_data_point, c_size(existing_instantaneous_writes))
     iterator=c_get_iterator(existing_instantaneous_writes)
@@ -158,8 +159,8 @@ contains
     if (number_entries .gt. 0) then
       do i=1, number_entries
         call c_put_real(existing_instantaneous_writes, unpack_scalar_string_from_bytedata(byte_data, current_data_point), &
-             unpack_scalar_dp_real_from_bytedata(byte_data, current_data_point))        
+             unpack_scalar_dp_real_from_bytedata(byte_data, current_data_point))
       end do
-    end if    
+    end if
   end subroutine unserialise_instantaneous_state
 end module instantaneous_time_manipulation_mod

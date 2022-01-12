@@ -1,3 +1,11 @@
+<!--  Please enter any necessary conditions for the use of this file here. 
+    1. Typically, the checkpoint configuration includes checkpoint_frequency=0, meaning that a
+       checkpoint will be produced whenever a cycle is terminated (for any valid reason).
+       However, checkpoint_frequency may be non-zero.  In that case, to ensure that each 
+       checkpoint contains only the most recent sample, we rely on the file title being
+         title="Checkpoint"  <-case insensitive->.
+       Try not to change the title, please.
+-->
 <data-definition name="checkpoint_data" frequency="{checkpoint_frequency}" namespace="checkpoint" send_on_terminate=true>
 	<field name="thref" type="array" data_type="double" size="z"/>
 	<field name="w" type="array" data_type="double" size="z,y,x" collective=true optional=true/>
@@ -99,6 +107,7 @@
         <member name="w_dwn"/>
 </group>
 
+<!-- Please see note above about this file's title and why it should not be changed. -->
 <data-writing>
   <file name="{checkpoint_file}" write_timestep_frequency="{checkpoint_frequency}" title="Checkpoint" write_on_terminate="true" store_state="false">
     <include group="checkpoint_fields" time_manipulation="none"/>

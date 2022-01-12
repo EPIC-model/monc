@@ -1,7 +1,7 @@
 !> This contains the CFL test. It will perform the local advective CFL and Galilean transfromation calculations,
 !! compute the global values of these, then check the cfl criterion and determine an absolute new dtm. Depending upon the
 !! maximum and increment values this is then smoothed into a new dtm value. The value of dtm is physically set to this new
-!! value at the start of the next timestep. 
+!! value at the start of the next timestep.
 module cfltest_mod
   use datadefn_mod, only : DEFAULT_PRECISION, PRECISION_TYPE
   use monc_component_mod, only : component_descriptor_type
@@ -9,11 +9,11 @@ module cfltest_mod
   use collections_mod, only : map_type
   use logging_mod, only : LOG_WARN, LOG_DEBUG, LOG_ERROR, LOG_INFO, &
                           log_log, log_get_logging_level, log_master_newline, &
-                          log_master_log, log_is_master
+                          log_master_log
   use conversions_mod, only : conv_to_string
   use optionsdatabase_mod, only : options_get_integer, options_get_real, options_get_logical
   use grids_mod, only : Z_INDEX, Y_INDEX, X_INDEX
-  use mpi, only : MPI_MAX, MPI_MIN  
+  use mpi, only : MPI_MAX, MPI_MIN
   implicit none
 
 #ifndef TEST_MODE
@@ -36,7 +36,7 @@ contains
     cfltest_get_descriptor%timestep=>timestep_callback
   end function cfltest_get_descriptor
 
-  !> Called at initialisation, will read in configuration and use either configured or default values. 
+  !> Called at initialisation, will read in configuration and use either configured or default values.
   !! @param current_state The current model state
   subroutine initialisation_callback(current_state)
     type(model_state_type), intent(inout), target :: current_state
@@ -55,16 +55,18 @@ contains
     allocate(current_state%abswmax(current_state%local_grid%local_domain_end_index(Z_INDEX)))
   end subroutine initialisation_callback
 
-  !> Called at each timestep, this will only do the CFL computation every nncfl timesteps (or every timestep up to nncfl) but
-  !! will ratchet up to the absolute (target) dtm as needed.
+  !> Called at each timestep, this will only do the CFL computation every nncfl timesteps
+  !!  (or every timestep up to nncfl) but will ratchet up to the absolute (target) dtm as needed.
   !! @param current_state The current model state
   subroutine timestep_callback(current_state)
     type(model_state_type), intent(inout), target :: current_state
 
     real(kind=DEFAULT_PRECISION) :: cfl_number
 
-    if (current_state%normal_step) then
+    ! Default position: no dtm change
+    current_state%update_dtm=.false.
 
+    ! Perform CFL check at certain points in time (intervals and if interval passed).
       if ((mod(current_state%timestep, current_state%cfl_frequency) == 1 .or. &
            current_state%timestep-current_state%start_timestep .le. current_state%cfl_frequency) &
           .or. current_state%timestep .ge. (current_state%last_cfl_timestep + current_state%cfl_frequency)) then
@@ -74,33 +76,41 @@ contains
         current_state%cvel_x=0.0_DEFAULT_PRECISION
         current_state%cvel_y=0.0_DEFAULT_PRECISION
         current_state%cvel_z=0.0_DEFAULT_PRECISION
-  
+
         call perform_cfl_and_galilean_transformation_calculation(current_state)
-  
-        current_state%cvel=(current_state%cvel_x*current_state%global_grid%configuration%horizontal%cx+current_state%cvel_y*&
-             current_state%global_grid%configuration%horizontal%cy+current_state%cvel_z)*current_state%dtm
+
+      current_state%cvel = &
+              (current_state%cvel_x*current_state%global_grid%configuration%horizontal%cx &
+              +current_state%cvel_y*current_state%global_grid%configuration%horizontal%cy &
+              +current_state%cvel_z) * current_state%dtm
         current_state%cvis=current_state%cvis*(current_state%dtm * 4)
-  
+
         cfl_number=current_state%cvis/cvismax+current_state%cvel/cvelmax
-  
+
         current_state%absolute_new_dtm=current_state%dtm
-        current_state%update_dtm=.false.
         if (cfl_number .gt. 0.0_DEFAULT_PRECISION) then
-          if (cfl_number .lt. (1.0_DEFAULT_PRECISION-tollerance) .or. cfl_number .gt. (1.0_DEFAULT_PRECISION+tollerance)) then
+        if (cfl_number .lt. (1.0_DEFAULT_PRECISION-tollerance) .or. &
+            cfl_number .gt. (1.0_DEFAULT_PRECISION+tollerance)) then
             current_state%absolute_new_dtm=current_state%dtm/cfl_number
           end if
         end if
-      end if ! evaluate the cfl 
+      end if ! evaluate the cfl
 
+
+    ! On normal_step, allow ratcheting or cfl reduction.
+    ! Otherwise, no not permit dtm change unless necessary.
+    if (current_state%normal_step) then
       call update_dtm_based_on_absolute(current_state, cfl_number)
-
+      ! check for need to reduce dtm to match sample or output time
       if (current_state%time_basis .or. current_state%force_output_on_interval) &
-         call evaluate_time_basis(current_state) 
-
-    else ! do not evaluate if taking reduced NON-normal_step
-
-      current_state%update_dtm=.false.
-
+        call evaluate_time_basis(current_state)
+    else ! make no updates due to dtm lock unless needed because of suggested reduction
+         ! from above cfl check when using force_output_on_interval because locks might be long.
+      if ( current_state%force_output_on_interval .and. &
+           current_state%absolute_new_dtm .lt. current_state%dtm) then
+        call update_dtm_based_on_absolute(current_state, cfl_number)
+        call evaluate_time_basis(current_state)
+      end if
     end if ! end check normal_step
 
     current_state%cvis=0.0_DEFAULT_PRECISION
@@ -123,16 +133,15 @@ contains
       current_state%dtm_new=min(current_state%dtm*(1.0_DEFAULT_PRECISION+rincmax), current_state%absolute_new_dtm, dtmmax)
 
       if (l_monitor_cfl) then
-        call log_master_log(LOG_INFO, " --- CFL Monitoring Information --- ")
+        call log_master_log(LOG_INFO, " --- CFL Monitoring Information --- "//trim(conv_to_string(current_state%timestep)))
         if (l_constant_dtm) &
           call log_master_log(LOG_INFO, " *** l_constant_dtm=.true. - NOT CHANGING ***")
         call log_master_log(LOG_INFO, "dtm changed from "//trim(conv_to_string(current_state%dtm, 5))&
                 //" to "//trim(conv_to_string(current_state%dtm_new, 5)))
-        if (cfl_number .gt. 0.0) then 
+        if (cfl_number .gt. 0.0) then
           call log_master_log(LOG_INFO, "cfl_number :  "//trim(conv_to_string(cfl_number))//"  (change divisor)")
           call log_master_log(LOG_INFO, "cvis       :  "//trim(conv_to_string(current_state%cvis)) )
           call log_master_log(LOG_INFO, "cvel       :  "//trim(conv_to_string(current_state%cvel)))
-!//", "//trim(conv_to_string(current_state%cvel_x))//", "//trim(conv_to_string(current_state%cvel_y))//", "//trim(conv_to_string(current_state%cvel_z)) )
         else
           call log_master_log(LOG_INFO, "dtm change due to ratcheting only. Target dtm unchanged.")
         end if
@@ -164,7 +173,7 @@ contains
       current_state%dtm_new = current_state%dtm
       current_state%update_dtm=.false.
     end if
-  end subroutine update_dtm_based_on_absolute  
+  end subroutine update_dtm_based_on_absolute
 
   !> Performs the CFL and Galilean transformation calculations. First locally and then will determine the global value
   !! of each calculation. If U, V or W are not active then these are set to 0 and the calculation use these values
@@ -177,14 +186,14 @@ contains
          global_zvmax, global_cvel_z, global_cvis
 
 #ifdef U_ACTIVE
-    current_state%local_zumin=current_state%local_zumin+current_state%ugal               ! _undo Gal-trfm                        
+    current_state%local_zumin=current_state%local_zumin+current_state%ugal               ! _undo Gal-trfm
     current_state%local_zumax=current_state%local_zumax+current_state%ugal
 #else
     current_state%local_zumin=0.0_DEFAULT_PRECISION
     current_state%local_zumax=0.0_DEFAULT_PRECISION
 #endif
 #ifdef V_ACTIVE
-    current_state%local_zvmin=current_state%local_zvmin+current_state%vgal               ! _undo Gal-trfm                        
+    current_state%local_zvmin=current_state%local_zvmin+current_state%vgal               ! _undo Gal-trfm
     current_state%local_zvmax=current_state%local_zvmax+current_state%vgal
 #else
     current_state%local_zvmin=0.0_DEFAULT_PRECISION
@@ -215,7 +224,7 @@ contains
     current_state%cvel_x=max(abs(global_zumax-current_state%ugal), abs(global_zumin-current_state%ugal))
     current_state%cvel_y=max(abs(global_zvmax-current_state%vgal), abs(global_zvmin-current_state%vgal))
     current_state%cvis=global_cvis
-  end subroutine perform_cfl_and_galilean_transformation_calculation 
+  end subroutine perform_cfl_and_galilean_transformation_calculation
 
   !> Gets the global reduction values based upon the local contributions of CFL and Galilean transformations provided
   !! @param local_zumin Local contribution to ZU minimum
@@ -287,7 +296,7 @@ contains
 
       end if ! next_sample_time to be exceeded
 
-    ! Handle force_output_on_interval by finding if time step can be reduced to hit 
+    ! Handle force_output_on_interval by finding if time step can be reduced to hit
     ! output interval exactly on a sampling interval.
     else if (current_state%force_output_on_interval) then
 
@@ -298,12 +307,24 @@ contains
                   (next_sample_time .eq. current_state%sampling(:)%next_time))
       sample_nts = next_step - current_state%timestep + interval
 
-      if (sample_nts .eq. 0) sample_nts = interval
-      projected_time = (current_state%time + current_state%dtm) + sample_nts*current_state%dtm_new
+      ! Early return point.
+      ! When readjusting for a dtm reduction during a non-normal step, permit the dtm lock to
+      ! persist if it's only a few timesteps away from the next_step
+      ! This is an ugly hack.
+      if (.not. current_state%normal_step .and. next_step - current_state%timestep .le. 5) then
+        current_state%update_dtm = .false.  ! dtm lock persists, normal_step remains .false.
+        current_state%dtm_new = current_state%dtm   ! symbolic assignment.  no real effect.
+        ! ensure that cfl will be re-checked once next_step is reached.
+        current_state%last_cfl_timestep = current_state%timestep - current_state%cfl_frequency &
+                                                        + (next_step - current_state%timestep)
+        return
+      end if
+
       dtm_trial = (next_sample_time - (current_state%time + current_state%dtm) ) &
                                 / sample_nts
 
-      if (dtm_trial .gt. current_state%dtm) then
+      if (dtm_trial .gt. current_state%dtm_new) then ! No need to adjust
+        current_state%normal_step = .true.
         return
       else ! dtm should be reduced to hit output time
         current_state%dtm_new = dtm_trial

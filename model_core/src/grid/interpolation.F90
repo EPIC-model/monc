@@ -143,7 +143,9 @@ contains
     integer :: nnodes                                  ! number of input values
     real(kind=DEFAULT_PRECISION), dimension(:), allocatable :: zvals, z
     real(kind=DEFAULT_PRECISION), dimension(:,:), allocatable :: vals
+    logical :: pressure
 
+    pressure = .false.
 
     nz_force = size(zvals_in)
     nt_force = size(time_vals)
@@ -154,17 +156,18 @@ contains
 
     zvals=zvals_in
 
-    if ( zvals(1) .GT. zvals(nz_force) ) then   ! pressure
+    if ( zvals(1) .GT. zvals(nz_force) ) then   ! detect pressure coordinates: flip and scale
       zvals=log10(zvals_in(nz_force:1:-1))
       z=log10(z_out(nz_monc:1:-1))
       vals=vals_in(nz_force:1:-1,:)
+      pressure = .true.
     else
       zvals=zvals_in
       z=z_out
       vals=vals_in
     end if
 
-       do k_monc=1,nz_monc                                                     
+       do k_monc=1,nz_monc
           do k_force=1,nz_force-1
              if( z(k_monc) >= zvals(k_force) .AND. z(k_monc) < zvals(k_force+1) ) then
                 scale_tmp = ( z(k_monc) - zvals(k_force) ) /              &
@@ -180,8 +183,8 @@ contains
        ! now examine the cases below and above forlevs(1) and forlevs(ktmfor
        ! uses the local vertical gradient in the forcing to determine the
        ! new values
-       do k_monc=1,nz_monc                                                
-          if ( z(k_monc) >= zvals(nz_force) ) then                    
+       do k_monc=1,nz_monc
+          if ( z(k_monc) >= zvals(nz_force) ) then
              scale_tmp = ( z(k_monc) - zvals(nz_force) )                   &
                   / ( zvals(nz_force) - zvals(nz_force-1) )
              do nn=1,nt_force
@@ -199,8 +202,8 @@ contains
              enddo
           endif
        enddo
-       !
-    if ( zvals(nz_force) .GT. zvals(1) ) then   ! pressure (flipped coordinates)
+
+    if ( pressure ) then   ! pressure (revert flipped coordinates)
       field=field(nz_monc:1:-1,:)
     endif
 
@@ -208,7 +211,7 @@ contains
 
 
 
-  ! "extrapolate" is a bad name for this option, as extrapolate is only used to determine how to 
+  ! "extrapolate" is a bad name for this option, as extrapolate is only used to determine how to
   ! do the interpolation so that it is either linear or constant (not actually interpolation)
   ! Actual extrapolation is only constant and automatic, it's just constantly replicated. Oy.
   ! Pleasantly, the default is to do internal linear interpolation.

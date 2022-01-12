@@ -35,8 +35,8 @@ module casim_mod
      , max_step_length, max_sed_length, l_sg, l_g, l_passive        &
      , l_passive3m, l_limit_psd, l_override_checks &
      , max_mu, fix_mu, l_raci_g, l_onlycollect, l_inhom_revp &
-     , l_tidy_conserve_E , l_tidy_conserve_q & 
-     , l_pcond & ! Condensation	 
+     , l_tidy_conserve_E , l_tidy_conserve_q &
+     , l_pcond & ! Condensation
      , l_praut & ! Autoconversion cloud -> rain
      , l_pracw & ! Accretion  cloud -> rain
      , l_pracr & ! aggregation of rain drops
@@ -79,11 +79,13 @@ module casim_mod
      ! New switches for sedimentation (these are sort-of temporary)
      , l_gamma_online & ! when true use standard vn0.3.3 sed, when false use precalced gamma
      , l_subseds_maxv & ! Use a CFL criteria based on max terminal velocity
-                    ! and sed_1M_2M 
+                    ! and sed_1M_2M
      , l_sed_eulexp & ! switch for eulexp sed based on UM. Default is false
                       ! so standard casim sed used
      , cfl_vt_max & ! cfl limit for sedimentation (default = 1.0)
-     , l_kfsm
+     , l_kfsm & ! single moment based on wilson-ballard
+     , l_adjust_D0
+
   use mphys_constants, only: fixed_cloud_number
 
 
@@ -104,7 +106,12 @@ module casim_mod
      , nc(:,:,:), qr(:,:,:), nr(:,:,:), m3r(:,:,:),rho(:,:,:) &
      , exner(:,:,:), w(:,:,:), tke(:,:,:)                               &
      , qi(:,:,:), ni(:,:,:), qs(:,:,:), ns(:,:,:), m3s(:,:,:) &
-     , qg(:,:,:), ng(:,:,:), m3g(:,:,:), cfliq(:,:,:), cfice(:,:,:)
+     , qg(:,:,:), ng(:,:,:), m3g(:,:,:)
+  ! declare a fraction for each hydrometeor category. All fractions are
+  ! initialised set to 1 if cloud is present, since MONC does not include
+  ! subgrid cloud fraction scheme (yet!)
+  REAL(wp), allocatable ::  cfliq(:,:,:), cfice(:,:,:) &
+       , cfsnow(:,:,:), cfrain(:,:,:), cfgr(:,:,:)
 
   REAL(wp), allocatable :: AccumSolMass(:,:,:), AccumSolNumber(:,:,:) ! Accumulation mode aerosol
   REAL(wp), allocatable :: ActiveSolLiquid(:,:,:)                      ! Activated aerosol
@@ -121,18 +128,18 @@ module casim_mod
   REAL(wp), allocatable :: ActiveInsolNumber(:,:,:)                      ! Activated insoluble number (if we need a tracer)
   !!AH - these are dummy arrays to accommodate the hygroscopicity from
   !!     UKCA-MODE. At present these are only required so that the shipway_microphysics
-  !!     argument list matches between the UM and MONC interface. These may become non-dummy 
+  !!     argument list matches between the UM and MONC interface. These may become non-dummy
   !!     arguments in the future
   REAL(wp), allocatable :: AitkenSolBk(:,:,:)
-  REAL(wp), allocatable :: AccumSolBk(:,:,:) 
+  REAL(wp), allocatable :: AccumSolBk(:,:,:)
   REAL(wp), allocatable :: CoarseSolBk(:,:,:)
 
   ! Tendency from other physics/advection/forcing
   ! NB This is tendency (/s) not an increment over the timestep
   REAL(wp), allocatable :: dqv(:,:,:), dth(:,:,:), dqc(:,:,:), dnc(:,:,:)              &
      , dqr(:,:,:), dnr(:,:,:), dm3r(:,:,:)                                  &
-     , dqi(:,:,:), dni(:,:,:), dqs(:,:,:), dns(:,:,:), dm3s(:,:,:)      & 
-     , dqg(:,:,:), dng(:,:,:), dm3g(:,:,:) 
+     , dqi(:,:,:), dni(:,:,:), dqs(:,:,:), dns(:,:,:), dm3s(:,:,:)      &
+     , dqg(:,:,:), dng(:,:,:), dm3g(:,:,:)
 
   REAL(wp), allocatable :: dAccumSolMass(:,:,:), dAccumSolNumber(:,:,:) ! Accumulation mode aerosol
   REAL(wp), allocatable :: dActiveSolLiquid(:,:,:)                       ! Activated aerosol
@@ -149,13 +156,15 @@ module casim_mod
   REAL(wp), allocatable :: dActiveInsolNumber(:,:,:)                      ! Activated insoluble number (if we need a tracer)
 
   REAL(wp), allocatable :: surface_precip(:,:)
+  REAL(wp), allocatable :: surface_cloudsed(:,:)
+  REAL(wp), allocatable :: surface_rainsed(:,:)
 
   INTEGER ::   ils,ile, jls,jle, kls,kle, &
      its,ite, jts,jte, kts,kte
 
   INTEGER :: iqv=0, iql=0, iqr=0,  iqi=0, iqs=0,  iqg=0
   INTEGER ::        inl=0, inr=0,  ini=0, ins=0,  ing=0
-  INTEGER ::               i3mr=0,        i3ms=0, i3mg=0 
+  INTEGER ::               i3mr=0,        i3ms=0, i3mg=0
   INTEGER ::                &
      i_AccumSolMass=0,      &
      i_AccumSolNumber=0,    &
@@ -180,7 +189,7 @@ module casim_mod
        pssub_tot, pimlt_tot, psmlt_tot, psaut_tot, psaci_tot, praut_tot, pracw_tot, prevp_tot,   &
        pgacw_tot, pgacs_tot, pgmlt_tot, pgsub_tot, psedi_tot, pseds_tot, psedr_tot, psedg_tot,   &
        psedl_tot, pcond_tot
-  
+
   public casim_get_descriptor
 contains
 
@@ -197,10 +206,10 @@ contains
     !
     casim_get_descriptor%field_value_retrieval=>field_value_retrieval_callback
     casim_get_descriptor%field_information_retrieval=>field_information_retrieval_callback
-    
-    allocate(casim_get_descriptor%published_fields(27))
-    
-    casim_get_descriptor%published_fields(1)="surface_precip"    
+
+    allocate(casim_get_descriptor%published_fields(29))
+
+    casim_get_descriptor%published_fields(1)="surface_precip"
     casim_get_descriptor%published_fields(2)="homogeneous_freezing_rate"
     casim_get_descriptor%published_fields(3)="ice_nucleations_rate"
     casim_get_descriptor%published_fields(4)="ice_deposition_rate"
@@ -227,7 +236,9 @@ contains
     casim_get_descriptor%published_fields(25)="graup_sed_rate"
     casim_get_descriptor%published_fields(26)="cloud_sed_rate"
     casim_get_descriptor%published_fields(27)="condensation_rate"
-    
+    casim_get_descriptor%published_fields(28)="surface_cloudsed"
+    casim_get_descriptor%published_fields(29)="surface_rainsed"
+
   end function casim_get_descriptor
 
   !> The initialisation callback sets up the microphysics
@@ -243,11 +254,11 @@ contains
 
    !allocate(psedl_tot(current_state%local_grid%size(Z_INDEX)), &
    !      pcond_tot(current_state%local_grid%size(Z_INDEX)))
-    
+
     y_size_local = current_state%local_grid%size(Y_INDEX)
     x_size_local = current_state%local_grid%size(X_INDEX)
-    
-    call read_configuration(current_state)   
+
+    call read_configuration(current_state)
 
     ils=1
     ile=1
@@ -290,6 +301,9 @@ contains
     allocate(m3g(kte,1,1))
     allocate(cfliq(kte,1,1))
     allocate(cfice(kte,1,1))
+    allocate(cfsnow(kte,1,1))
+    allocate(cfrain(kte,1,1))
+    allocate(cfgr(kte,1,1))
 
     allocate(AccumSolMass(kte,1,1))
     allocate(AccumSolNumber(kte,1,1))
@@ -353,10 +367,10 @@ contains
     ! Need to allocate the appropriate indices, e.g. iqv, iql...
     ! This needs to be compatible with the rest of the model
     ! This essentially reproduces the switching in the main microphysics
-    ! code already done above (set_mphys_switches), so could be combined 
+    ! code already done above (set_mphys_switches), so could be combined
     ! once the MONC method has been finalized.
-    ! Note the numbers assigned here may be different from those assigned 
-    ! in the microphysics since we share the q array with other components. 
+    ! Note the numbers assigned here may be different from those assigned
+    ! in the microphysics since we share the q array with other components.
 
     if (.not. allocated(current_state%cq))then
        allocate(current_state%cq(current_state%number_q_fields))
@@ -393,12 +407,27 @@ contains
     end if
 
     ! Number
-    if (l_2mc)inl = get_q_index(standard_q_names%CLOUD_LIQUID_NUMBER, 'casim')
-    if (l_2mr)inr = get_q_index(standard_q_names%RAIN_NUMBER, 'casim')
+    if (l_2mc) then
+       inl = get_q_index(standard_q_names%CLOUD_LIQUID_NUMBER, 'casim')
+       current_state%liquid_water_nc_index=inl
+    endif
+    if (l_2mr) then
+       inr = get_q_index(standard_q_names%RAIN_NUMBER, 'casim')
+       current_state%rain_water_nc_index = inr
+    endif
     if (.not. l_warm)then
-      if (l_2mi)ini = get_q_index(standard_q_names%ICE_NUMBER, 'casim')
-      if (l_2ms)ins = get_q_index(standard_q_names%SNOW_NUMBER, 'casim')
-      if (l_2mg)ing = get_q_index(standard_q_names%GRAUPEL_NUMBER, 'casim')
+      if (l_2mi) then
+         ini = get_q_index(standard_q_names%ICE_NUMBER, 'casim')
+         current_state%ice_water_nc_index=ini
+      endif
+      if (l_2ms) then
+         ins = get_q_index(standard_q_names%SNOW_NUMBER, 'casim')
+         current_state%snow_water_nc_index=ins
+      endif
+      if (l_2mg) then
+         ing = get_q_index(standard_q_names%GRAUPEL_NUMBER, 'casim')
+         current_state%graupel_water_nc_index = ing
+      endif
     end if
 
     ! Third moments
@@ -410,37 +439,37 @@ contains
 
     ! Aerosol
     if (soluble_modes(1) > 1)   i_AitkenSolMass     = &
-       get_q_index(standard_q_names%AITKEN_SOL_MASS,     'casim') 
+       get_q_index(standard_q_names%AITKEN_SOL_MASS,     'casim')
     if (soluble_modes(1) > 0)   i_AitkenSolNumber   = &
-       get_q_index(standard_q_names%AITKEN_SOL_NUMBER,   'casim') 
+       get_q_index(standard_q_names%AITKEN_SOL_NUMBER,   'casim')
     if (soluble_modes(2) > 1)   i_AccumSolMass      = &
-       get_q_index(standard_q_names%ACCUM_SOL_MASS,      'casim') 
+       get_q_index(standard_q_names%ACCUM_SOL_MASS,      'casim')
     if (soluble_modes(2) > 0)   i_AccumSolNumber    = &
-       get_q_index(standard_q_names%ACCUM_SOL_NUMBER,    'casim') 
+       get_q_index(standard_q_names%ACCUM_SOL_NUMBER,    'casim')
     if (soluble_modes(3) > 1)   i_CoarseSolMass     = &
-       get_q_index(standard_q_names%COARSE_SOL_MASS,     'casim') 
+       get_q_index(standard_q_names%COARSE_SOL_MASS,     'casim')
     if (soluble_modes(3) > 0)   i_CoarseSolNumber   = &
-       get_q_index(standard_q_names%COARSE_SOL_NUMBER,   'casim') 
+       get_q_index(standard_q_names%COARSE_SOL_NUMBER,   'casim')
     if (active_cloud(isol))     i_ActiveSolLiquid   = &
-       get_q_index(standard_q_names%ACTIVE_SOL_LIQUID,   'casim') 
+       get_q_index(standard_q_names%ACTIVE_SOL_LIQUID,   'casim')
     if (active_rain(isol))      i_ActiveSolRain     = &
-       get_q_index(standard_q_names%ACTIVE_SOL_RAIN,     'casim') 
+       get_q_index(standard_q_names%ACTIVE_SOL_RAIN,     'casim')
     if (insoluble_modes(2) > 1) i_CoarseDustMass    = &
-       get_q_index(standard_q_names%COARSE_DUST_MASS,    'casim') 
+       get_q_index(standard_q_names%COARSE_DUST_MASS,    'casim')
     if (insoluble_modes(2) > 0) i_CoarseDustnumber  = &
-       get_q_index(standard_q_names%COARSE_DUST_NUMBER,  'casim') 
+       get_q_index(standard_q_names%COARSE_DUST_NUMBER,  'casim')
     if (active_ice(iinsol))     i_ActiveInsolIce    = &
-       get_q_index(standard_q_names%ACTIVE_INSOL_ICE,    'casim') 
+       get_q_index(standard_q_names%ACTIVE_INSOL_ICE,    'casim')
     if (active_ice(isol))       i_ActiveSolIce      = &
-       get_q_index(standard_q_names%ACTIVE_SOL_ICE,      'casim') 
+       get_q_index(standard_q_names%ACTIVE_SOL_ICE,      'casim')
     if (active_cloud(iinsol))   i_ActiveInsolLiquid = &
-       get_q_index(standard_q_names%ACTIVE_INSOL_LIQUID, 'casim') 
+       get_q_index(standard_q_names%ACTIVE_INSOL_LIQUID, 'casim')
     if (insoluble_modes(1) > 1) i_AccumInsolMass    = &
-       get_q_index(standard_q_names%ACCUM_INSOL_MASS,    'casim') 
+       get_q_index(standard_q_names%ACCUM_INSOL_MASS,    'casim')
     if (insoluble_modes(1) > 0) i_AccumInsolNumber  = &
-       get_q_index(standard_q_names%ACCUM_INSOL_NUMBER,  'casim') 
+       get_q_index(standard_q_names%ACCUM_INSOL_NUMBER,  'casim')
     if (active_number(isol))    i_ActiveSolNumber   = &
-       get_q_index(standard_q_names%ACTIVE_SOL_NUMBER,   'casim') 
+       get_q_index(standard_q_names%ACTIVE_SOL_NUMBER,   'casim')
     if (active_number(iinsol))  i_ActiveInsolNumber = &
          get_q_index(standard_q_names%ACTIVE_INSOL_NUMBER, 'casim')
 
@@ -453,6 +482,7 @@ contains
     if ( l_psedl ) then
        casdiags % l_psedl = .TRUE.
        casdiags % l_surface_rain = .TRUE.
+       casdiags % l_surface_cloud = .TRUE.
        casdiags % l_precip = .TRUE.
     endif
     if ( l_praut ) casdiags % l_praut = .TRUE.
@@ -505,6 +535,8 @@ contains
     CALL allocate_diagnostic_space(its, ite, jts, jte, kts, kte)
     ! this is no longer needed since can use cas_monc_dgs structure but keep for now
     allocate(surface_precip(y_size_local, x_size_local))
+    allocate(surface_cloudsed(y_size_local, x_size_local))
+    allocate(surface_rainsed(y_size_local, x_size_local))
     ! allocate diagnostic space for MONC fields to export to IO server
     call allocate_casim_monc_dgs_space(current_state, casdiags)
 
@@ -527,7 +559,7 @@ contains
     !   psedl_tot(:)= 0.0_DEFAULT_PRECISION
     !   pcond_tot(:)= 0.0_DEFAULT_PRECISION
     !endif
-    
+
     if (current_state%halo_column .or. current_state%timestep < 2) return
 
     if (current_state%field_stepping == FORWARD_STEPPING)then
@@ -571,7 +603,7 @@ contains
     ActiveInsolNumber = 0.0
     dActiveInsolNumber = 0.0
     AitkenSolBk = 0.0
-    AccumSolBk = 0.0 
+    AccumSolBk = 0.0
     CoarseSolBk = 0.0
 
     theta(:,1,1) = current_state%zth%data(:, jcol, icol) + current_state%global_grid%configuration%vertical%thref(:)
@@ -589,6 +621,12 @@ contains
     qv(:,1,1) = current_state%zq(iqx)%data(:,jcol,icol)
     dqv(:,1,1) = current_state%sq(iqx)%data(:,jcol,icol)
 
+    cfliq(:,1,1) = 1.0_wp
+    cfice(:,1,1) = 1.0_wp
+    cfsnow(:,1,1) = 1.0_wp
+    cfrain(:,1,1) = 1.0_wp
+    cfgr(:,1,1) = 1.0_wp
+
     ! Warm microphysical fields
     IF (nq_l > 0)then
       iqx = iql
@@ -600,6 +638,7 @@ contains
       iqx = iqr
       qr(:,1,1) = current_state%zq(iqx)%data(:,jcol,icol)
       dqr(:,1,1) = current_state%sq(iqx)%data(:,jcol,icol)
+      cfrain(:,1,1) = 1.0
     end IF
     IF (nq_l > 1)then
       iqx = inl
@@ -628,11 +667,13 @@ contains
       iqx = iqs
       qs(:,1,1) = current_state%zq(iqx)%data(:,jcol,icol)
       dqs(:,1,1) = current_state%sq(iqx)%data(:,jcol,icol)
+      cfsnow(:,1,1) = 1.0
     end IF
     IF (nq_g > 0)then
       iqx = iqg
       qg(:,1,1) = current_state%zq(iqx)%data(:,jcol,icol)
       dqg(:,1,1) = current_state%sq(iqx)%data(:,jcol,icol)
+      cfgr(:,1,1) = 1.0
     end IF
     IF (nq_i > 1)then
       iqx = ini
@@ -721,13 +762,13 @@ contains
        ActiveSolNumber,                            &
        ActiveInsolNumber,                          &
        AitkenSolBk,                                &
-       AccumSolBk,                                 & 
+       AccumSolBk,                                 &
        CoarseSolBk,                                &
        exner,                                      &
        pressure, rho,                              &
        w, tke,                                     &
        z_half, z_centre,                           &
-       dz, cfliq, cfice,                           &
+       dz, cfliq, cfice, cfsnow, cfrain, cfgr,     &
                                 ! in/out
        dqv, dqc, dqr, dnc, dnr, dm3r,              &
        dqi, dqs, dqg, dni, dns, dng, dm3s, dm3g,   &
@@ -856,22 +897,27 @@ contains
     if (l_warm .or. .not. casdiags % l_surface_snow ) then
        surface_precip(target_y_index,target_x_index) = &
             casdiags % SurfaceRainR(1,1)
+       surface_cloudsed(target_y_index,target_x_index) = &
+            casdiags % SurfaceCloudR(1,1)
+       surface_rainsed(target_y_index,target_x_index) = &
+            casdiags % SurfaceRainR(1,1) - casdiags % SurfaceCloudR(1,1)
+
     else
        surface_precip(target_y_index,target_x_index) = &
             casdiags % SurfaceRainR(1,1) + casdiags % SurfaceSnowR(1,1)
     endif
     call populate_casim_monc_dg(current_state, casdiags)
 
-    
+
   end subroutine timestep_callback
 
 
-  !! Reads the casim configuration 
+  !! Reads the casim configuration
   !! @param current_state The current model state
   subroutine read_configuration(current_state)
 
 
-    Use mphys_parameters, only: p1, p2, p3, sp1, sp2, sp3   
+    Use mphys_parameters, only: p1, p2, p3, sp1, sp2, sp3
 
     type(model_state_type), target, intent(inout) :: current_state
 
@@ -967,6 +1013,7 @@ contains
     l_sed_eulexp  = options_get_logical(current_state%options_database, 'l_sed_eulexp')
     cfl_vt_max      = options_get_real(current_state%options_database, 'cfl_vt_max')
     l_kfsm          = options_get_logical(current_state%options_database, 'l_kfsm')
+    l_adjust_D0     = options_get_logical(current_state%options_database, 'l_adjust_D0')
     fixed_cloud_number = options_get_real(current_state%options_database, 'fixed_cloud_number')
 
   end subroutine read_configuration
@@ -978,7 +1025,8 @@ contains
 
     field_information%field_type=COMPONENT_ARRAY_FIELD_TYPE
     field_information%data_type=COMPONENT_DOUBLE_DATA_TYPE
-    if (name .eq. "surface_precip") then
+    if (name .eq. "surface_precip" .or. name .eq. "surface_cloudsed" .or. &
+       name .eq. "surface_rainsed") then
        field_information%number_dimensions=2
        field_information%dimension_sizes(1)=current_state%local_grid%size(Y_INDEX)
        field_information%dimension_sizes(2)=current_state%local_grid%size(X_INDEX)
@@ -991,9 +1039,9 @@ contains
        field_information%dimension_sizes(2)=current_state%local_grid%size(Y_INDEX)
        field_information%dimension_sizes(3)=current_state%local_grid%size(X_INDEX)
     endif
-       
-    field_information%enabled=.true.    
- 
+
+    field_information%enabled=.true.
+
   end subroutine field_information_retrieval_callback
 
   !> Field value retrieval callback, this returns the value of a specific published field
@@ -1004,13 +1052,21 @@ contains
     type(model_state_type), target, intent(inout) :: current_state
     character(len=*), intent(in) :: name
     type(component_field_value_type), intent(out) :: field_value
-    
+
     integer :: i
 
     if (name .eq. "surface_precip") then
        allocate(field_value%real_2d_array(current_state%local_grid%size(Y_INDEX), &
             current_state%local_grid%size(X_INDEX)))
        field_value%real_2d_array(:,:)= surface_precip(:,:)
+    else if (name .eq. "surface_cloudsed") then
+       allocate(field_value%real_2d_array(current_state%local_grid%size(Y_INDEX), &
+            current_state%local_grid%size(X_INDEX)))
+       field_value%real_2d_array(:,:)= surface_cloudsed(:,:)
+    else if (name .eq. "surface_rainsed") then
+       allocate(field_value%real_2d_array(current_state%local_grid%size(Y_INDEX), &
+            current_state%local_grid%size(X_INDEX)))
+       field_value%real_2d_array(:,:)= surface_rainsed(:,:)
     else if (name .eq. "condensation_rate") then
        allocate(field_value%real_3d_array(current_state%local_grid%size(Z_INDEX),  &
             current_state%local_grid%size(Y_INDEX),                                &
@@ -1020,7 +1076,7 @@ contains
 !!$       allocate(field_value%real_1d_array(current_state%local_grid%size(Z_INDEX)))
 !!$       field_value%real_1d_array(:)=pcond_tot(:)
     end if
-    
+
   end subroutine field_value_retrieval_callback
 
 end module casim_mod

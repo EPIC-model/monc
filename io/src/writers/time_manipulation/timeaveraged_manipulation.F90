@@ -36,15 +36,15 @@ module timeaveraged_time_manipulation_mod
   public init_time_averaged_manipulation, finalise_time_averaged_manipulation, perform_timeaveraged_time_manipulation, &
        is_time_averaged_time_manipulation_ready_to_write, serialise_time_averaged_state, unserialise_time_averaged_state, &
        prepare_to_serialise_time_averaged_state
-contains  
+contains
 
    !> Initialises the reduction action
   subroutine init_time_averaged_manipulation(reconfig_initial_time)
     real(kind=DEFAULT_PRECISION), intent(in) :: reconfig_initial_time
-    
+
     model_initial_time = reconfig_initial_time
     call check_thread_status(forthread_rwlock_init(timeaveraged_value_rw_lock, -1))
-  end subroutine init_time_averaged_manipulation  
+  end subroutine init_time_averaged_manipulation
 
   !> Finalises the reduction action, waiting for all outstanding requests and then freeing data
   !! @param io_configuration Configuration state of the IO server
@@ -80,12 +80,12 @@ contains
     type(time_averaged_completed_type), pointer :: timeaveraged_value
     logical :: select_value
 
-    timeaveraged_value=>find_or_add_timeaveraged_value(timestep, field_name)
+    timeaveraged_value=>find_or_add_timeaveraged_value(timestep, field_name, output_frequency)
 
     call check_thread_status(forthread_mutex_lock(timeaveraged_value%mutex))
     call time_average(timeaveraged_value, instant_values, time)
 
-    ! time_basis requires regular-interval entries.  Timestep requires time .ge. time+previous_output_time
+    ! time_basis requires regular-interval entries.  Timestep requires time .ge. previous_output_time+output_frequency
     if (time_basis) then
       select_value = mod(nint(time), nint(output_frequency)) == 0
     else
@@ -109,24 +109,30 @@ contains
   !! @param timeaveraged_value The time averaged value to update
   !! @param instant_values The instant values to integrate in
   !! @param time The model time
+  !! Map:
+  !  start_time                        previous_time    time
+  !           |                                    |       |
+  !           |------------------------------------|-------|
+  !                             |                      |
+  !                          timeav                 timedg
+  !
   subroutine time_average(timeaveraged_value, instant_values, time)
     type(time_averaged_completed_type), intent(inout) :: timeaveraged_value
     real(kind=DEFAULT_PRECISION), dimension(:), intent(in) :: instant_values
     real(kind=DEFAULT_PRECISION), intent(in) :: time
 
     integer :: i
-    real(kind=DEFAULT_PRECISION) :: timeav, timedg, combined_add    
+    real(kind=DEFAULT_PRECISION) :: timeav, timedg, combined_add
 
     timedg = time - timeaveraged_value%previous_time
-    timeav = time - timeaveraged_value%start_time - timedg
-
+    timeav = timeaveraged_value%previous_time - timeaveraged_value%start_time
     combined_add=timeav+timedg
 
     if (.not. allocated(timeaveraged_value%time_averaged_values)) then
       allocate(timeaveraged_value%time_averaged_values(size(instant_values)))
       timeaveraged_value%time_averaged_values=0.0_DEFAULT_PRECISION
     end if
-    
+
     if (timeaveraged_value%empty_values) then
       timeaveraged_value%empty_values=.false.
       timeaveraged_value%time_averaged_values=instant_values
@@ -136,7 +142,7 @@ contains
              timedg*instant_values(i)) / combined_add
       end do
     end if
-    
+
     timeaveraged_value%previous_time=time
   end subroutine time_average
 
@@ -146,9 +152,9 @@ contains
     type(mapentry_type) :: map_entry
     type(iterator_type) :: iterator
     class(*), pointer :: generic
-    
+
     call check_thread_status(forthread_rwlock_rdlock(timeaveraged_value_rw_lock))
-    
+
     prepare_to_serialise_time_averaged_state=kind(prepare_to_serialise_time_averaged_state)
     iterator=c_get_iterator(timeaveraged_values)
     do while (c_has_next(iterator))
@@ -161,7 +167,7 @@ contains
                prepare_to_serialise_time_averaged_completed_value(generic)+&
                (kind(prepare_to_serialise_time_averaged_state)*2)+len(trim(map_entry%key))
         end select
-      end if      
+      end if
     end do
   end function prepare_to_serialise_time_averaged_state
 
@@ -174,7 +180,7 @@ contains
     type(mapentry_type) :: map_entry
     type(iterator_type) :: iterator
     class(*), pointer :: generic
-    
+
     current_data_point=1
     current_data_point=pack_scalar_field(byte_data, current_data_point, c_size(timeaveraged_values))
 
@@ -192,10 +198,10 @@ contains
 
           prev_pt=current_data_point
           current_data_point=current_data_point+kind(current_data_point)
-          call serialise_time_averaged_completed_value(generic, byte_data, current_data_point)          
+          call serialise_time_averaged_completed_value(generic, byte_data, current_data_point)
           prev_pt=pack_scalar_field(byte_data, prev_pt, (current_data_point-kind(current_data_point)) - prev_pt)
         end select
-      end if      
+      end if
     end do
     call check_thread_status(forthread_rwlock_unlock(timeaveraged_value_rw_lock))
   end subroutine serialise_time_averaged_state
@@ -295,11 +301,12 @@ contains
   !! @param timestep The corresponding timestep
   !! @param field_name The corresponding field name
   !! @returns A matching or new time averaged value
-  function find_or_add_timeaveraged_value(timestep, field_name)
+  function find_or_add_timeaveraged_value(timestep, field_name, output_frequency)
     integer, intent(in) :: timestep
     character(len=*), intent(in) :: field_name
+    real, intent(in) :: output_frequency
     type(time_averaged_completed_type), pointer :: find_or_add_timeaveraged_value
-    
+
     class(*), pointer :: generic
     type(time_averaged_completed_type), pointer :: new_entry
 
@@ -313,7 +320,8 @@ contains
         new_entry%start_time=model_initial_time
         new_entry%previous_time=model_initial_time
         new_entry%empty_values=.true.
-        new_entry%previous_output_time=model_initial_time
+        new_entry%previous_output_time = real(model_initial_time) &
+                                           - mod(real(model_initial_time), output_frequency)
         call check_thread_status(forthread_mutex_init(new_entry%mutex, -1))
         generic=>new_entry
         call c_put_generic(timeaveraged_values, field_name, generic, .false.)
@@ -321,7 +329,7 @@ contains
       end if
       call check_thread_status(forthread_rwlock_unlock(timeaveraged_value_rw_lock))
     end if
-  end function find_or_add_timeaveraged_value  
+  end function find_or_add_timeaveraged_value
 
   !> Finds a time averaged value based upon its field name
   !! @param field_name The corresponding field name
@@ -336,17 +344,17 @@ contains
     logical :: do_read_lock
 
     if (present(issue_read_lock)) then
-      do_read_lock=issue_read_lock      
+      do_read_lock=issue_read_lock
     else
       do_read_lock=.true.
-    end if        
+    end if
 
     if (do_read_lock) call check_thread_status(forthread_rwlock_rdlock(timeaveraged_value_rw_lock))
-    generic=>c_get_generic(timeaveraged_values, field_name)    
+    generic=>c_get_generic(timeaveraged_values, field_name)
     if (do_read_lock) call check_thread_status(forthread_rwlock_unlock(timeaveraged_value_rw_lock))
     if (associated(generic)) then
       select type(generic)
-      type is (time_averaged_completed_type)      
+      type is (time_averaged_completed_type)
         find_timeaveraged_value=>generic
       end select
     else

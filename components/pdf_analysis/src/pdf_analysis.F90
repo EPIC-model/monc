@@ -166,7 +166,6 @@ contains
     type(model_state_type), target, intent(inout) :: current_state
     real(kind=DEFAULT_PRECISION), dimension(lpts) :: tmp_var
 
-
     integer :: k, num_neg, num_pos, dd_thresh_pos, ud_thresh_pos
     integer :: bnc, bpn, bpx
     integer :: max_up_k, min_dwn_k

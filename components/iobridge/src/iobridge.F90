@@ -582,6 +582,7 @@ contains
   integer function send_general_monc_information_to_server(current_state, buffer)
     type(model_state_type), target, intent(inout) :: current_state
     character, dimension(:), intent(inout) :: buffer
+
     character(len=STRING_LENGTH) :: q_field_name, tracer_name, cd_field_name
     type(q_metadata_type) :: q_meta_data
     integer :: current_loc, n, ierr, request_handle
@@ -808,6 +809,18 @@ contains
       current_state%sampling(psize)%output(1) = -9999  ! this is a dummy item in this case
     end if
 
+    ! Enforce time_basis sampling regularity (prevents bugs)
+    if (current_state%time_basis) then
+      if (any(mod(current_state%sampling(:)%interval,minval(current_state%sampling(:)%interval)) &
+           .ne. 0)) then
+        call log_master_log(LOG_ERROR, "Under time_basis, all sampling intervals must be "//&
+                 "divisible by the smallest sampling interval ("//&
+                 trim(conv_to_string(minval(current_state%sampling(:)%interval)))//&
+                 " s).  This rule applies system-wide (diagnostics, radiation, checkpoints, etc.")
+
+      end if
+    end if
+
   end subroutine register_with_io_server
 
   !> Retrieve the total number of fields, which is all the fields in all the data definitions
@@ -861,6 +874,25 @@ contains
         call c_put_integer(unique_field_names, field_descriptions(i)%field_name, 1)
       end if
       if (.not. field_descriptions(i)%optional) data_definitions(definition_index)%fields(field_index)%enabled=.true.
+
+      ! Verify valid configuration of SOCRATES radiation diagnostics
+      if (socrates_enabled .and. radiation_interval .gt. 0 .and. &
+          definition_descriptions(definition_index)%frequency .gt. 0) then
+        if (any(field_descriptions(i)%field_name .eq. socrates_descriptor%published_fields(:))) then
+          if (mod(definition_descriptions(definition_index)%frequency, radiation_interval) .ne. 0 .or. &
+              definition_descriptions(definition_index)%frequency .lt. radiation_interval) then
+            call log_master_log(LOG_ERROR, "To guarantee availability of radiation "//&
+             "diagnostics, the sampling interval (currently: "//&
+                trim(conv_to_string(definition_descriptions(definition_index)%frequency))//&
+             ") of the diagnostic ("//trim(field_descriptions(i)%field_name)//&
+             ") must be a MULTIPLE of AND .GE. the radiation calculation interval "//&
+             "(currently: rad_interval="//trim(conv_to_string(radiation_interval))//&
+             ").  This means radiation diagnostics cannot be sampled between calculations."//&
+             "  Check variable's sampling interval (frequency=#) in the xml data-definition." )
+          end if !err
+        end if !compare
+      end if !enabled
+
     end do
       ! Verify valid configuration of SOCRATES radiation diagnostics
       if (socrates_enabled .and. radiation_interval .gt. 0 .and. &
@@ -1375,6 +1407,24 @@ contains
         current_state%sampling(i)%next_time = minval(((int(current_state%time + dtmmin)    &
                                                  / current_state%sampling(i)%output(:)) + 1)  &
                                               * current_state%sampling(i)%output(:))
+
+        if (size(current_state%sampling(i)%output(:)) .eq. 0) then
+          ! There are no specified output intervals for this sampling interval, so we set the
+          ! next "output time" (which could change dtm) to be the largest possible integer.
+          ! This ensures that in these cases (possibly for a non-zero checkpoint_frequency or
+          ! a radiation interval) the samples simply occur on the timestep interval, and the
+          ! request has no impact on dtm changes.  In the case of a specified non-zero
+          ! checkpoint_frequency, though, checkpoints will be written at that sampling frequency
+          ! without any consideration for the model time.
+          ! Further, note that this only needs to happen here.  Updates to %next_time in this
+          ! module's timestep_callback only occur when writing at an existing %next_time, which
+          ! won't reasonably be reached in this case.
+          current_state%sampling(i)%next_time = huge(current_state%sampling(i)%next_time)
+        else
+          current_state%sampling(i)%next_time = minval(((int(current_state%time + dtmmin)         &
+                                                     / current_state%sampling(i)%output(:)) + 1)  &
+                                                           * current_state%sampling(i)%output(:) )
+        end if
         current_state%sampling(i)%next_step = (current_state%timestep &
                                                / current_state%sampling(i)%interval + 1) &
                                               * current_state%sampling(i)%interval

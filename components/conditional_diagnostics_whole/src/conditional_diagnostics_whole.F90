@@ -12,8 +12,6 @@ module conditional_diagnostics_whole_mod
   use datadefn_mod, only : PRECISION_TYPE, DEFAULT_PRECISION
   use mpi, only : MPI_SUM, MPI_IN_PLACE, MPI_INT, MPI_REAL, MPI_DOUBLE
 
-  use optionsdatabase_mod, only : options_get_integer
-
   implicit none
 
 #ifndef TEST_MODE

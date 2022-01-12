@@ -665,7 +665,6 @@ contains
              has_pid_already_been_seen(temp_neighbour_pids, &
              local_grid%neighbours(i,j))) then
           current_pid_location=current_pid_location+1
-
           halo_swap_state%halo_swap_neighbours(current_pid_location)%pid=local_grid%neighbours(i,j)
           temp_neighbour_pids(current_pid_location)=local_grid%neighbours(i,j)
           halo_swap_state%halo_swap_neighbours(current_pid_location)%dimension=i

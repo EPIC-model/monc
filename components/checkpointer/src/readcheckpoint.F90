@@ -2,10 +2,10 @@
 module checkpointer_read_checkpoint_mod
 #ifndef TEST_MODE
   use netcdf, only : nf90_global, nf90_nowrite, nf90_inquire_attribute, nf90_open, nf90_inq_dimid, nf90_inquire_dimension, &
-       nf90_inq_varid, nf90_get_var, nf90_get_att, nf90_close
+       nf90_inq_varid, nf90_get_var, nf90_get_att, nf90_close, nf90_noerr
 #else
   use dummy_netcdf_mod, only : nf90_global, nf90_nowrite, nf90_inquire_attribute, nf90_open, nf90_inq_dimid, &
-       nf90_inquire_dimension, nf90_inq_varid, nf90_get_var, nf90_get_att, nf90_close
+       nf90_inquire_dimension, nf90_inq_varid, nf90_get_var, nf90_get_att, nf90_close, nf90_noerr
 #endif
   use datadefn_mod, only : STRING_LENGTH
   use state_mod, only : model_state_type
@@ -51,14 +51,14 @@ contains
     call check_status(nf90_open(path = filename, mode = nf90_nowrite, ncid = ncid))
     attribute_value=read_specific_global_attribute(ncid, "created")
     call read_dimensions(ncid, z_dim, y_dim, x_dim, z_found, y_found, x_found)
-    call load_global_grid(current_state, ncid, z_dim, y_dim, x_dim, z_found, y_found, x_found)    
+    call load_global_grid(current_state, ncid, z_dim, y_dim, x_dim, z_found, y_found, x_found)
     call verify_checkpoint_and_config_agree(current_state)
     call decompose_grid(current_state)
 
-    call load_q_indices(ncid)    
+    call load_q_indices(ncid)
     call load_misc(current_state, ncid)
     call load_all_fields(current_state, ncid)
-    call initalise_source_and_sav_fields(current_state)  
+    call initalise_source_and_sav_fields(current_state)
     call load_mean_profiles(current_state, ncid, z_dim)
     call load_pdf_profiles(current_state, ncid, z_dim)
     call check_status(nf90_close(ncid))
@@ -99,7 +99,7 @@ contains
 
   !> Check for agreement between checkpoint and configuration global_grid dimensions.
   !  It is possible for them to disagree and still have a functioning model run, but
-  !  diagnostic and checkpoint files will not have the expected dimensions. 
+  !  diagnostic and checkpoint files will not have the expected dimensions.
   !! @param current_state The current model state
   subroutine verify_checkpoint_and_config_agree(current_state)
     type(model_state_type), intent(inout) :: current_state
@@ -109,8 +109,8 @@ contains
     if ( options_get_integer(current_state%options_database, "y_size") .ne. current_state%global_grid%size(Y_INDEX) ) &
       call log_master_log(LOG_ERROR, "Checkpoint and config y-dimensions do not agree.")
     if ( options_get_integer(current_state%options_database, "z_size") .ne. current_state%global_grid%size(Z_INDEX) ) &
-      call log_master_log(LOG_ERROR, "Checkpoint and config z-dimensions do not agree.") 
-    
+      call log_master_log(LOG_ERROR, "Checkpoint and config z-dimensions do not agree.")
+
   end subroutine verify_checkpoint_and_config_agree
 
 
@@ -175,17 +175,19 @@ contains
 
     integer :: i_data(1)  ! Procedure requires a vector rather than scalar
     real(kind=DEFAULT_PRECISION) :: r_data(1)
+    integer :: erri, dumid
+    logical :: read_normal=.true., read_last_cfl=.true.
 
     call read_single_variable(ncid, TIMESTEP, integer_data_1d=i_data)
     current_state%timestep = i_data(1)+1 ! plus one to increment for next timestep
-    !current_state%start_timestep = current_state%timestep 
+    !current_state%start_timestep = current_state%timestep
     call read_single_variable(ncid, UGAL, real_data_1d_double=r_data)
     current_state%ugal = r_data(1)
     call read_single_variable(ncid, VGAL, real_data_1d_double=r_data)
     current_state%vgal = r_data(1)
     call read_single_variable(ncid, NQFIELDS, integer_data_1d=i_data)
     current_state%number_q_fields = i_data(1)
-    ! Ignore tracer information in the case of a reconfiguration start. 
+    ! Ignore tracer information in the case of a reconfiguration start.
     ! Terms will be zero here and later be set from the new configuration specification.
     if (.not. current_state%reconfig_run) then
       call read_single_variable(ncid, NTRACERS_KEY, integer_data_1d=i_data)
@@ -203,16 +205,39 @@ contains
     current_state%update_dtm = current_state%dtm .ne. current_state%dtm_new
     call read_single_variable(ncid, ABSOLUTE_NEW_DTM_KEY, real_data_1d_double=r_data)
     current_state%absolute_new_dtm = r_data(1)
-    call read_single_variable(ncid, NORMAL_STEP_KEY, integer_data_1d=i_data)
-    if (i_data(1) .eq. 0 ) current_state%normal_step = .false. ! otherwise, keep default .true. value
+
+    ! During reconfig_run, check for fields that might be missing from old checkpoints
+    !   Only read if they are present.
+    !   Otherwise, skip reading, and leave default state values.
+    if ( current_state%reconfig_run ) then
+      ! normal_step defaults to .true.: no need to set again
+      erri = nf90_inq_varid(ncid, NORMAL_STEP_KEY, dumid)
+      read_normal = erri .eq. nf90_noerr
+
+      ! last_cfl_timestep defaults to 0: no need to set again
+      erri = nf90_inq_varid(ncid, LAST_CFL_TIMESTEP_KEY, dumid)
+      read_last_cfl = erri .eq. nf90_noerr
+    end if
+
+    if ( read_normal ) then
+      call read_single_variable(ncid, NORMAL_STEP_KEY, integer_data_1d=i_data)
+      if (i_data(1) .eq. 0 ) current_state%normal_step = .false. ! otherwise, keep default .true. value
+    end if
+
     call read_single_variable(ncid, TIME_KEY, real_data_1d_double=r_data)
     ! The time is written into checkpoint as time+dtm, therefore the time as read in has been correctly advanced
     current_state%time = r_data(1)
+
     call read_single_variable(ncid, RAD_LAST_TIME_KEY, real_data_1d_double=r_data)
     current_state%rad_last_time = r_data(1)
-    call read_single_variable(ncid, LAST_CFL_TIMESTEP_KEY, integer_data_1d=i_data)
-    current_state%last_cfl_timestep = i_data(1)
+
+    if ( read_last_cfl ) then
+      call read_single_variable(ncid, LAST_CFL_TIMESTEP_KEY, integer_data_1d=i_data)
+      current_state%last_cfl_timestep = i_data(1)
+    end if
+
     if ( current_state%reconfig_run ) then
+      ! This is required because of the formulation of later initialization of some fields.
       current_state%timestep = 1
       if ( .not. current_state%retain_model_time ) then
         current_state%time = 0.0_DEFAULT_PRECISION
@@ -257,7 +282,7 @@ contains
     type(q_metadata_type) :: q_metadata
     character(len=STRING_LENGTH) :: q_field_name, zq_field_name
     character(len=STRING_LENGTH) :: tracer_field_name, ztracer_field_name
-    
+
     multi_process = current_state%parallel%processes .gt. 1
 
     if (does_field_exist(ncid, U_KEY)) then
@@ -287,7 +312,7 @@ contains
     if (does_field_exist(ncid, P_KEY)) then
       call load_single_3d_field(ncid, current_state%local_grid, current_state%p, DUAL_GRID, &
            DUAL_GRID, DUAL_GRID, P_KEY, multi_process)
-    end if    
+    end if
     allocate(current_state%q(current_state%number_q_fields), current_state%zq(current_state%number_q_fields), &
          current_state%sq(current_state%number_q_fields))
     if (does_field_exist(ncid, Q_KEY)) then
@@ -307,7 +332,7 @@ contains
           zq_field_name=trim(ZQ_FIELD_ANONYMOUS_NAME)//"_"//trim(conv_to_string(i))
           if (.not. does_field_exist(ncid, q_field_name)) then
             call log_log(LOG_ERROR, "No entry in checkpoint file for Q field "//trim(conv_to_string(i)))
-          end if          
+          end if
         end if
         if (.not. does_field_exist(ncid, zq_field_name)) then
           call log_log(LOG_ERROR, "Missmatch between q and zq field name in the checkpoint file")
@@ -316,7 +341,7 @@ contains
              DUAL_GRID, DUAL_GRID, q_field_name, multi_process)
         call load_single_3d_field(ncid, current_state%local_grid, current_state%zq(i), DUAL_GRID, &
              DUAL_GRID, DUAL_GRID, zq_field_name, multi_process)
-      end do      
+      end do
     end if
     if (current_state%n_tracers >0) then
       allocate(current_state%tracer(current_state%n_tracers), current_state%ztracer(current_state%n_tracers), &
@@ -338,7 +363,7 @@ contains
           if (.not. does_field_exist(ncid, tracer_field_name)) then
             call log_log(LOG_ERROR, "No entry in checkpoint file for tracer field "// &
                                        trim(conv_to_string(i))//", "//trim(tracer_field_name))
-          end if          
+          end if
           if (.not. does_field_exist(ncid, ztracer_field_name)) then
             call log_log(LOG_ERROR, "Missmatch between tracer and ztracer field name in the checkpoint file")
           end if
@@ -347,7 +372,7 @@ contains
                DUAL_GRID, DUAL_GRID, tracer_field_name, multi_process)
           call load_single_3d_field(ncid, current_state%local_grid, current_state%ztracer(i), DUAL_GRID, &
                DUAL_GRID, DUAL_GRID, ztracer_field_name, multi_process)
-        end do      
+        end do
       end if
     end if
     if (does_field_exist(ncid, STH_LW_KEY)) then
@@ -408,7 +433,7 @@ contains
     else
       get_number_q_indices=0
     end if
-  end function get_number_q_indices  
+  end function get_number_q_indices
 
   !> Loads in and initialises a single 3D prognostic field. Even if the model is being run in 1 or 2D, the fields
   !! are still stored in 3D with the missing dimension sizes being set to one.
@@ -494,7 +519,7 @@ contains
     if (z_found) then
       call read_dimension_of_grid(ncid, current_state%global_grid, Z_KEY, Z_INDEX, z_dim)
       call define_vertical_levels(ncid, current_state, Z_KEY, z_dim)
-      
+
     end if
     if (y_found) call read_dimension_of_grid(ncid, current_state%global_grid, Y_KEY, Y_INDEX, y_dim)
     if (x_found) call read_dimension_of_grid(ncid, current_state%global_grid, X_KEY, X_INDEX, x_dim)
@@ -541,16 +566,16 @@ contains
         q_metadata=get_indices_descriptor(i)
         q_field_name=trim(OLQBAR)//"_"//trim(q_metadata%name)
         if (.not. does_field_exist(ncid, q_field_name)) then
-          q_field_name=trim(OLQBAR_ANONYMOUS_NAME)//"_"//trim(conv_to_string(i))          
+          q_field_name=trim(OLQBAR_ANONYMOUS_NAME)//"_"//trim(conv_to_string(i))
           if (.not. does_field_exist(ncid, q_field_name)) then
             cycle
-          end if        
+          end if
         end if
         if (.not. allocated(current_state%global_grid%configuration%vertical%olqbar)) then
           allocate(current_state%global_grid%configuration%vertical%olqbar(z_size, current_state%number_q_fields))
         end if
         call read_single_variable(ncid, q_field_name, &
-             real_data_1d_double=current_state%global_grid%configuration%vertical%olqbar(:, i))        
+             real_data_1d_double=current_state%global_grid%configuration%vertical%olqbar(:, i))
       end do
     end if
    if (does_field_exist(ncid, OLZQBAR)) then
@@ -561,19 +586,19 @@ contains
         q_metadata=get_indices_descriptor(i)
         q_field_name=trim(OLZQBAR)//"_"//trim(q_metadata%name)
         if (.not. does_field_exist(ncid, q_field_name)) then
-          q_field_name=trim(OLZQBAR_ANONYMOUS_NAME)//"_"//trim(conv_to_string(i))          
+          q_field_name=trim(OLZQBAR_ANONYMOUS_NAME)//"_"//trim(conv_to_string(i))
           if (.not. does_field_exist(ncid, q_field_name)) then
             cycle
-          end if        
+          end if
         end if
         if (.not. allocated(current_state%global_grid%configuration%vertical%olzqbar)) then
           allocate(current_state%global_grid%configuration%vertical%olzqbar(z_size, current_state%number_q_fields))
         end if
         call read_single_variable(ncid, q_field_name, &
-             real_data_1d_double=current_state%global_grid%configuration%vertical%olzqbar(:, i))        
+             real_data_1d_double=current_state%global_grid%configuration%vertical%olzqbar(:, i))
       end do
     end if
-  end subroutine load_mean_profiles  
+  end subroutine load_mean_profiles
 
 
   subroutine load_pdf_profiles(current_state, ncid, z_dim_id)
@@ -621,7 +646,7 @@ contains
       current_state%global_grid%configuration%vertical%kgd(i) = i
       current_state%global_grid%configuration%vertical%hgd(i) = real(data(i))
     end do
-    deallocate(data)    
+    deallocate(data)
   end subroutine define_vertical_levels
 
   !> Reads a specific dimension of the grid from the NetCDF and sets this up in the state_mod
@@ -652,10 +677,10 @@ contains
       ! For now hard code the bottom of the grid in each dimension as 0, first element is the 0th + size
       ! I.e. if dxx=100, start=0 then first point is 100 rather than 0 (in x and y), is correct in z in CP file
       grid%bottom(dimension) = 0
-    end if            
+    end if
     grid%size(dimension) = dim_size
     grid%dimensions = grid%dimensions + 1
-    grid%active(dimension) = .true.    
+    grid%active(dimension) = .true.
   end subroutine read_dimension_of_grid
 
   !> Reads in a single variable and sets the values of the data based upon this. Handles reading in
@@ -689,7 +714,7 @@ contains
     if (present(int_data)) then
       call check_status(nf90_get_var(ncid, variable_id, int_data))
       return
-    end if  
+    end if
 
     if (present(real_data)) then
       call check_status(nf90_get_var(ncid, variable_id, real_data))
@@ -773,7 +798,7 @@ contains
     alloc_z=current_state%local_grid%size(Z_INDEX) + current_state%local_grid%halo_size(Z_INDEX) * 2
     alloc_y=current_state%local_grid%size(Y_INDEX) + current_state%local_grid%halo_size(Y_INDEX) * 2
     alloc_x=current_state%local_grid%size(X_INDEX) + current_state%local_grid%halo_size(X_INDEX) * 2
- 
+
     call log_master_log(LOG_INFO,"Restarting tracers.  Checking config for enabled tracers.")
     call get_tracer_options(current_state)
 
@@ -788,7 +813,7 @@ contains
         call allocate_prognostic(current_state%stracer(i), alloc_z, alloc_y, alloc_x, DUAL_GRID, DUAL_GRID, DUAL_GRID)
       end do
 
-      ! Under normal continuation runs, these aren't reinitialised in the initialisation, but reconfiguration 
+      ! Under normal continuation runs, these aren't reinitialised in the initialisation, but reconfiguration
       ! needs them to be reinitialised as if it were a cold start.
       if (trajectories_enabled) then
         call reinitialise_trajectories(current_state)

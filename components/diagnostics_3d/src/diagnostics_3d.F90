@@ -86,6 +86,7 @@ contains
     integer :: current_y_index, current_x_index, target_x_index, target_y_index
 
     if (current_state%halo_column) return
+    if (.not. current_state%diagnostic_sample_timestep) return
        
     current_y_index=current_state%column_local_y
     current_x_index=current_state%column_local_x

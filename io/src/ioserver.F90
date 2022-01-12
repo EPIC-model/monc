@@ -41,7 +41,7 @@ module io_server_mod
 
 #ifndef TEST_MODE
   private
-#endif  
+#endif
 
   integer :: mpi_type_data_sizing_description, & !< The MPI type for field sizing (i.e. array size etc send when MONCs register)
        mpi_type_definition_description, & !< The MPI data type for data descriptions sent to MONCs
@@ -91,8 +91,8 @@ contains
         if (my_rank == 0) then
           call log_log(LOG_WARN, "No IO server configuration in checkpoint file - starting from XML provided file instead")
         end if
-      end if      
-    end if    
+      end if
+    end if
 
     call check_for_condi_conflict(io_xml_configuration, options_database)
     call configuration_parse(options_database, io_xml_configuration, io_configuration)
@@ -124,7 +124,7 @@ contains
 
     call register_command_receive()
 
-    do while (await_command(command, source, data_buffer))      
+    do while (await_command(command, source, data_buffer))
       call handle_command_message(command, source, data_buffer)
     end do
     call threadpool_deactivate()
@@ -136,7 +136,7 @@ contains
     call cancel_requests()
     call free_mpi_type(mpi_type_data_sizing_description)
     call free_mpi_type(mpi_type_definition_description)
-    call free_mpi_type(mpi_type_field_description)    
+    call free_mpi_type(mpi_type_field_description)
     call threadpool_finalise()
   end subroutine io_server_run
 
@@ -183,9 +183,9 @@ contains
           return
         end if
       end if
-      if (continue_poll_interio_messages .and. allocated(io_configuration%inter_io_communications)) then       
+      if (continue_poll_interio_messages .and. allocated(io_configuration%inter_io_communications)) then
         inter_io_complete=test_for_inter_io(io_configuration%inter_io_communications, &
-             io_configuration%number_inter_io_communications, io_configuration%io_communicator, command, source, data_buffer) 
+             io_configuration%number_inter_io_communications, io_configuration%io_communicator, command, source, data_buffer)
         if (inter_io_complete) then
           await_command=.true.
           return
@@ -194,12 +194,12 @@ contains
       if (.not. continue_poll_messages .and. .not. already_registered_finishing_call) then
         if (check_diagnostic_federator_for_completion(io_configuration) .and. &
             (.not. any_pending()) .and. threadpool_is_idle()) then
-          already_registered_finishing_call=.true.          
-          call perform_global_callback(io_configuration, "termination", 1, termination_callback)          
+          already_registered_finishing_call=.true.
+          call perform_global_callback(io_configuration, "termination", 1, termination_callback)
         end if
-      end if  
+      end if
       if (.not. completed) call pause_for_mpi_interleaving()
-    end do    
+    end do
   end function await_command
 
   !> This is the termination callback which is called once all MONCs have deregistered, no sends are active by inter IO
@@ -215,7 +215,7 @@ contains
     integer :: timestep
 
     continue_poll_interio_messages=.false.
-  end subroutine termination_callback  
+  end subroutine termination_callback
 
   !> Called to handle a specific command that has been recieved
   !! @param command The command which has been received from some process
@@ -240,12 +240,12 @@ contains
       if (l_thoff) then
         call handle_inter_io_communication_command((/ source /), data_buffer=data_buffer)
       else
-        call threadpool_start_thread(handle_inter_io_communication_command, (/ source /), data_buffer=data_buffer)      
+        call threadpool_start_thread(handle_inter_io_communication_command, (/ source /), data_buffer=data_buffer)
       end if
       deallocate(data_buffer)
-    else if (command .ge. DATA_COMMAND_START) then      
+    else if (command .ge. DATA_COMMAND_START) then
       call pull_back_data_message_and_handle(source, command-DATA_COMMAND_START)
-    end if    
+    end if
   end subroutine handle_command_message
 
   !> Handles inter IO server communications
@@ -273,7 +273,7 @@ contains
       do while (c_has_next(types_iterator))
         specific_monc_data_type=c_get_integer(c_next_mapentry(types_iterator))
         call free_mpi_type(specific_monc_data_type)
-      end do      
+      end do
       if (allocated(io_configuration%registered_moncs(i)%field_start_locations)) &
            deallocate(io_configuration%registered_moncs(i)%field_start_locations)
       if (allocated(io_configuration%registered_moncs(i)%field_end_locations)) &
@@ -282,7 +282,7 @@ contains
            deallocate(io_configuration%registered_moncs(i)%definition_names)
       if (allocated(io_configuration%registered_moncs(i)%dimensions)) deallocate(io_configuration%registered_moncs(i)%dimensions)
     end do
-  end subroutine free_individual_registered_monc_aspects  
+  end subroutine free_individual_registered_monc_aspects
 
   !> Deregisteres a specific MONC source process
   !! @param source The MONC process PID that we are deregistering
@@ -328,7 +328,7 @@ contains
     recv_count=data_receive(specific_monc_data_type, 1, source, dump_data=data_buffer, data_dump_id=data_set)
 
 
-    ! This call is not handled by threading...should aid in ensuring that all time points are listed appropriately
+    ! This call is not handled by threading...should aid in ensuring that all time points are listed sequentially
     matched_datadefn_index=retrieve_data_definition(io_configuration, &
          io_configuration%registered_moncs(monc_location)%definition_names(data_set))
     if (matched_datadefn_index .gt. 0) then
@@ -344,11 +344,11 @@ contains
     end if
 
     deallocate(data_buffer)
-  end subroutine pull_back_data_message_and_handle  
+  end subroutine pull_back_data_message_and_handle
 
   !> Handles the command for data download from a specific process. This will allocate the receive buffer
   !! and then call to get the data. Once it has been received then the data is run against handling rules
-  !! @param arguments, element 1 is the source & element 2 is the data_set 
+  !! @param arguments, element 1 is the source & element 2 is the data_set
   !! @param data_buffer The actual data from MONC read from the data channel
   subroutine handle_data_message(arguments, data_buffer)
     integer, dimension(:), intent(in) :: arguments
@@ -366,7 +366,7 @@ contains
     io_configuration%registered_moncs(monc_location)%active_threads=&
          io_configuration%registered_moncs(monc_location)%active_threads+1
     call check_thread_status(forthread_mutex_unlock(io_configuration%registered_moncs(monc_location)%active_mutex))
-    
+
     matched_datadefn_index=retrieve_data_definition(io_configuration, &
          io_configuration%registered_moncs(monc_location)%definition_names(data_set))
     if (matched_datadefn_index .gt. 0) then
@@ -376,7 +376,7 @@ contains
     else
       call log_log(LOG_WARN, "IO server can not find matching data definition with name "&
            //io_configuration%registered_moncs(monc_location)%definition_names(data_set))
-    end if    
+    end if
 
     call check_thread_status(forthread_mutex_lock(io_configuration%registered_moncs(monc_location)%active_mutex))
     io_configuration%registered_moncs(monc_location)%active_threads=&
@@ -409,7 +409,7 @@ contains
       ! The extension of the MONC registration array is broken as the pointers involved in the map does not get copied across
       ! we could manually do this, but that is for another day! If you need to extend these limits either increase the constants
       ! or fix the extension, I don't think it will be too hard to fix the extension bit (copy the maps manually)
-      call extend_registered_moncs_array(io_configuration)      
+      call extend_registered_moncs_array(io_configuration)
     end if
 
     io_configuration%active_moncs=io_configuration%active_moncs+1
@@ -439,7 +439,7 @@ contains
   function send_configuration_to_registree(source)
     integer, intent(in) :: source
     integer :: send_configuration_to_registree(3)
-    
+
     integer :: ierr, srequest(3)
 
     call lock_mpi()
@@ -451,12 +451,12 @@ contains
          source, DATA_TAG, MPI_COMM_WORLD, srequest(3), ierr)
     call unlock_mpi()
 
-    send_configuration_to_registree=srequest    
-  end function send_configuration_to_registree  
+    send_configuration_to_registree=srequest
+  end function send_configuration_to_registree
 
   !> Initialise the sizing of data definitions from a MONC process. The IO server determines, from configuration, the
   !! structure of each data definition but the size of the arrays depends upon the MONC process (due to uneven distribution
-  !! of data etc...) This receives the sizing message and then builds the MPI datatype for each data definition that the IO 
+  !! of data etc...) This receives the sizing message and then builds the MPI datatype for each data definition that the IO
   !! server will receive from that specific MONC process. The field sizings are for all fields in every data definition, and
   !! these are applied to each data definition which will simply ignore non matching fields
   !! @param source The source MONC PID
@@ -469,15 +469,15 @@ contains
     integer :: created_mpi_type, data_size, recv_count, i
     type(data_sizing_description_type) :: field_description
     logical :: field_found
-    
+
     recv_count=data_receive(mpi_type_data_sizing_description, io_configuration%number_of_distinct_data_fields+4, &
          source, description_data=data_description)
 
     call handle_monc_dimension_information(data_description, monc_defn)
-     
+
     do i=1, io_configuration%number_of_data_definitions
       created_mpi_type=build_mpi_datatype(io_configuration%data_definitions(i), data_description, data_size, &
-           monc_defn%field_start_locations(i), monc_defn%field_end_locations(i), monc_defn%dimensions(i))            
+           monc_defn%field_start_locations(i), monc_defn%field_end_locations(i), monc_defn%dimensions(i))
 
       call c_put_integer(monc_defn%registered_monc_types, conv_to_string(i), created_mpi_type)
       call c_put_integer(monc_defn%registered_monc_buffer_sizes, conv_to_string(i), data_size)
@@ -512,7 +512,7 @@ contains
     num_tracers=c_get_integer(io_configuration%dimension_sizing, "tfields")
 
     buffer_size=(kind(dreal)*z_size)*2 + (STRING_LENGTH * num_q_fields) + STRING_LENGTH * num_tracers &
-                 + 2*ncond*STRING_LENGTH + 2*ndiag*STRING_LENGTH 
+                 + 2*ncond*STRING_LENGTH + 2*ndiag*STRING_LENGTH
     allocate(buffer(buffer_size))
     recv_count=data_receive(MPI_BYTE, buffer_size, source, buffer)
     if (.not. io_configuration%general_info_set) then
@@ -531,7 +531,7 @@ contains
             call c_add_string(io_configuration%q_field_names, q_field_name)
           end do
         end if
-    
+
         if (num_tracers .gt. 0) then
           do n=1, num_tracers
             tracer_name=transfer(buffer(current_point+1:current_point+STRING_LENGTH), tracer_name)
@@ -564,7 +564,7 @@ contains
       call check_thread_status(forthread_mutex_unlock(io_configuration%general_info_mutex))
     end if
     deallocate(buffer)
-  end subroutine get_monc_information_data  
+  end subroutine get_monc_information_data
 
   !> Registers with the writer federator the set of fields (prognostic and diagnostic) that are available, this is based on
   !! the array/optional fields present from MONC and the non-optional scalars. This is quite an expensive operation, so only
@@ -587,8 +587,8 @@ contains
         if (io_configuration%data_definitions(i)%fields(j)%field_type == SCALAR_FIELD_TYPE .and. .not. &
              io_configuration%data_definitions(i)%fields(j)%optional) then
           call c_add_string(present_field_names, io_configuration%data_definitions(i)%fields(j)%name)
-        end if        
-      end do      
+        end if
+      end do
     end do
     call c_add_string(present_field_names, "time")
     call c_add_string(present_field_names, "timestep")
@@ -597,7 +597,7 @@ contains
     call inform_writer_federator_fields_present(io_configuration, diag_field_names_and_roots=diagnostics_field_names_and_roots)
     call c_free(present_field_names)
     call c_free(diagnostics_field_names_and_roots)
-  end subroutine register_present_field_names_to_federators  
+  end subroutine register_present_field_names_to_federators
 
   !> Handles the provided local MONC dimension and data layout information
   !! @param data_description The data descriptions sent over from MONC

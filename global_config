@@ -89,8 +89,7 @@ pressure-terms_group_contents=pstep, swap_smooth, conditional_diagnostics_column
 last_group_contents=conditional_diagnostics_whole, checkpointer, model_synopsis, termination_check, iobridge
 
 # Component ordering for other stages
-
-initialisation_stage_ordering=decomposition, kidreader, kidtestcase, checkpointer, simplesetup, grid_manager, dephy_forcings, mean_profiles, swap_smooth, termination_check, simplecloud, casim, tracers, coriolis, buoyancy, cfltest, damping, diverr, fftsolver, halo_swapper, iterativesolver, iterativesolver_single_prec, setfluxlook, lower_bc, physicsa, psrce, pw_advection, diffusion, set_consistent_lowbc, viscosity, smagorinsky, stepfields, stepping_direction, tvd_advection, model_synopsis, socrates_couple, lwrad_exponential,th_advection, randomnoise, forcing, flux_budget, diagnostics_3d, profile_diagnostics, casim_profile_dgs, conditional_diagnostics_column, conditional_diagnostics_whole, pdf_analysis, subgrid_profile_diagnostics, scalar_diagnostics, lateral_bcs, petsc_solver, pstep, iobridge
+initialisation_stage_ordering=decomposition, kidreader, kidtestcase, checkpointer, simplesetup, grid_manager, dephy_forcings, mean_profiles, swap_smooth, termination_check, simplecloud, casim, tracers, coriolis, buoyancy, cfltest, damping, diverr, fftsolver, halo_swapper, iterativesolver, iterativesolver_single_prec, setfluxlook, lower_bc, physicsa, psrce, pw_advection, diffusion, set_consistent_lowbc, viscosity, smagorinsky, stepfields, stepping_direction, tvd_advection, model_synopsis, socrates_couple, lwrad_exponential, th_advection, randomnoise, forcing, flux_budget, diagnostics_3d, profile_diagnostics, casim_profile_dgs, conditional_diagnostics_column, conditional_diagnostics_whole, pdf_analysis, subgrid_profile_diagnostics, scalar_diagnostics, lateral_bcs, petsc_solver, pstep, iobridge
 finalisation_stage_ordering=iobridge, checkpointer, diverr, fftsolver, grid_manager, halo_swapper, iterativesolver, iterativesolver_single_prec, physicsa, psrce, smagorinsky, tvd_advection, socrates_couple, lwrad_exponential, model_synopsis, mean_profiles, pdf_analysis, forcing, stepfields, flux_budget, coriolis, buoyancy, diffusion, lower_bc, viscosity, profile_diagnostics, pw_advection, th_advection, damping, simplecloud, tracers, pstep, conditional_diagnostics_whole, conditional_diagnostics_column
 
 # Control configuration
@@ -281,7 +280,6 @@ l_init_pl_rh=.false.
 
 l_matchthref=.false.
 l_thref=.false.
-l_thref_zero_buoy=.false.
 
 # Smagorinsky configuration
 # Default values for the smagorinsky subgrid constants
@@ -571,9 +569,9 @@ l_pgacr         = .true.
 l_pgacw         = .true.
 l_pgaci         = .true.
 l_pgacs         = .true.
-l_piagg         = .true.
+l_piagg         = .false.
 l_psagg         = .true.
-l_pgagg         = .true.
+l_pgagg         = .false.
 l_psbrk         = .true.
 l_pgshd         = .true.
 l_pihal         = .true.
@@ -590,6 +588,7 @@ l_subseds_maxv  = .false.
 l_sed_eulexp  = .false.
 cfl_vt_max = 1.0
 l_kfsm = .false.
+l_adjust_D0 = .true.
 
 l_tidy_conserve_E = .true.
 l_tidy_conserve_q = .true.
@@ -647,3 +646,9 @@ l_partial_liq_ice=.false.
 # Diagnostic sampling basis (unit selection)
 time_basis=.false.      # logical for sampling and output intervals [ .false. (timestep, DEFAULT) | .true. (time) ]
 
+#RCEMIP
+l_rcemip_initial=.false.
+l_rcemip_ozone=.false.
+l_rcemip_gases=.false.
+l_rcemip_lowerbc=.false.
+#l_rcemip_tracers=.false. # To implement, see ticket #376/349 for branch monc/main/branches/dev/toddjones/vn0.9.0_RCEMIP

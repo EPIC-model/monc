@@ -3,8 +3,7 @@
 #PBS -l select=1
 #PBS -l walltime=00:20:00
 #PBS -j oe
-#PBS -P nexcs-n06
-#PBS -q nexcs
+#PBS -q development
 
 
 ##############################################################
@@ -15,10 +14,10 @@
 #### If these do not exist, MONC will fail                ####
 ##############################################################
 
-# Make sure any symbolic links are resolved to absolute path 
+# Make sure any symbolic links are resolved to absolute path
 export PBS_O_WORKDIR=$(readlink -f $PBS_O_WORKDIR)
 
-# Change to the direcotry that the job was submitted from 
+# Change to the direcotry that the job was submitted from
 cd $PBS_O_WORKDIR
 
 export SUBMISSION_SCRIPT_NAME=testcases/radiative_convective_equilibrium/submonc_scripts/csubmonc.pbs
