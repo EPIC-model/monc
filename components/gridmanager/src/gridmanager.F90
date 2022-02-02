@@ -386,14 +386,18 @@ contains
     type(model_state_type), intent(inout) :: current_state
     type(vertical_grid_configuration_type), intent(inout) :: vertical_grid
     integer, intent(in) :: kkp
-
+    real(kind=DEFAULT_PRECISION) :: rmlmax
     integer :: k
 
     do k=2, kkp-1
+      rmlmax = 0.23 * (current_state%global_grid%configuration%horizontal%dx * &
+              current_state%global_grid%configuration%horizontal%dy * &
+              vertical_grid%dz(k+1))**(1.0/3.0)
       vertical_grid%rneutml(k)=sqrt(1.0_DEFAULT_PRECISION/(1.0_DEFAULT_PRECISION/(von_karman_constant*&
-           (vertical_grid%z(k)+z0))**2+1.0_DEFAULT_PRECISION/current_state%rmlmax**2) )
+           (vertical_grid%z(k)+z0))**2+1.0_DEFAULT_PRECISION/rmlmax**2) )
       vertical_grid%rneutml_sq(k)=vertical_grid%rneutml(k)*vertical_grid%rneutml(k)
-    end do
+    end do  
+
   end subroutine calculate_mixing_length_for_neutral_case
 
   !> Sets the buoyancy coefficient from the grid configuration and configuration

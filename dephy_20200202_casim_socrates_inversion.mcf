@@ -25,7 +25,7 @@ subgrid_profile_diagnostics_enabled=.true.
 socrates_couple_enabled=.true.
 flux_budget_enabled=.true.
 dephy_forcings_enabled=.true.
-dephy_file="eurec4a_20200202_first.dephy_inversion_nudging.nc"
+dephy_file="eurec4a_20200202_last.dephy_inversion_nudging.nc"
 diagnostics_3d_enabled=.false.
 casim_profile_dgs_enabled=.true.
 conditional_diagnostics_column_enabled=.false.
@@ -34,7 +34,7 @@ pdf_analysis_enabled=.false.
 
 # Control configuration
 display_synopsis_frequency=100
-termination_time=316800.
+termination_time=349100.
 dtm=0.4
 
 # IO server configuration
@@ -99,6 +99,9 @@ passive_q=.false.
 backscatter=.false.
 use_viscosity_and_diffusion=.true.
 l_matchthref=.false.
+
+smag-subb=1.43
+smag-subc=1.43
 
 # Random noise
 l_rand_pl_theta=.true.
