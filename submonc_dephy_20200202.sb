@@ -7,14 +7,14 @@
   # %a gives array task id number
   #  https://slurm.schedmd.com/sbatch.html
 #SBATCH --open-mode=append
-#SBATCH --nodes=16
+#SBATCH --nodes=64
 #SBATCH --ntasks-per-node=128
-#SBATCH --ntasks=2048
+#SBATCH --ntasks=8192
 #SBATCH --cpus-per-task=1
-#SBATCH --time=12:00:00
+#SBATCH --time=48:00:00
 #SBATCH --account=n02-NES015868
 #SBATCH --partition=standard
-#SBATCH --qos=standard
+#SBATCH --qos=long
 
 echo Starting job
 
@@ -78,7 +78,7 @@ if [ ! -d monc_stdout ]; then mkdir monc_stdout; fi
 if [ ! -d diagnostic_files ]; then mkdir diagnostic_files; fi
 
 # set env variables for submission command
-config_path='dephy_20200202_casim_socrates_inversion.mcf'
+config_path='dephy_20200202_last_high.mcf'
 checkpoint_fn="checkpoint_files/dephy_20200202_dump.nc"
 
 srun --unbuffered --cpu-bind=cores --distribution=block:block --hint=nomultithread ./build/bin/monc_driver.exe --config=$config_path  --checkpoint_file=$checkpoint_fn

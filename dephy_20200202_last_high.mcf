@@ -1,0 +1,175 @@
+# Global configuration
+global_configuration=global_config
+
+# Override global component defaults
+fftsolver_enabled=.true.
+pw_advection_enabled=.true.
+simplesetup_enabled=.true.
+smagorinsky_enabled=.true.
+lower_bc_enabled=.true.
+setfluxlook_enabled=.false. #Superseded by dephy
+viscosity_enabled=.true.
+diffusion_enabled=.true.
+simplecloud_enabled=.false.
+casim_enabled=.true.
+coriolis_enabled=.false. #Superseded by dephy
+damping_enabled=.true.
+forcing_enabled=.false. #Superseded by dephy
+randomnoise_enabled=.true.
+mean_profiles_enabled=.true. #This must be set to true if running with damping
+th_advection_enabled=.true.
+iobridge_enabled=.true.
+scalar_diagnostics_enabled=.true.
+profile_diagnostics_enabled=.true.
+subgrid_profile_diagnostics_enabled=.true.
+socrates_couple_enabled=.true.
+flux_budget_enabled=.true.
+dephy_forcings_enabled=.true.
+dephy_file="eurec4a_20200202_last_high.dephy_inversion_nudging.nc"
+diagnostics_3d_enabled=.false.
+casim_profile_dgs_enabled=.true.
+conditional_diagnostics_column_enabled=.false.
+conditional_diagnostics_whole_enabled=.false.
+pdf_analysis_enabled=.false.
+
+# Control configuration
+display_synopsis_frequency=100
+termination_time=374400.
+dtm=0.4
+
+# IO server configuration
+ioserver_configuration_file="io/io_cfg_files/archer_test.xml"
+time_basis=.true.              # logical for sampling and output intervals 
+                               #    [ .false. (timestep, DEFAULT) | .true. (time) ]
+                               #  - both treated as integers (no fractional-s time intervals)
+moncs_per_io_server=15
+sampling_frequency=300         # Sampling interval for time averaging,        integer [ ts | s ]
+3d_sampling_frequency=1800     # 3d Sampling interval for time averaging,     integer [ ts | s ]
+mm=1800.                        # An output interval,                             real [ s ]
+mm1=1800.                      # An output interval,                             real [ s ]
+diag_write_freq=3600.          # Reinitialization interval for diagnostic files, real [ s ]
+
+diagnostic_file_3d="d20200202_diagnostic_3d.nc"
+diagnostic_file_2d="d20200202_diagnostic_2d.nc"
+diagnostic_file_1d="d20200202_diagnostic_1d.nc"
+diagnostic_file_0d="d20200202_diagnostic_0d.nc"
+diagnostic_file_sd="d20200202_diagnostic_sd.nc"
+diagnostic_file_cd="d20200202_diagnostic_cd.nc"
+diagnostic_file="diagnostic_file_dephy_20200202_casim.nc"
+
+# Checkpoint configuration
+checkpoint_frequency=0
+checkpoint_file="dephy_20200202_casim_dump.nc"
+check_walltime_frequency=20
+walltime_limit=30:00:00
+
+# Advection choices
+advection_flow_fields=pw
+advection_theta_field=tvd
+advection_q_fields=tvd
+
+# CFL configuration
+cfl_frequency=10
+cfl_cvismax=0.4
+cfl_cvelmax=0.4
+cfl_dtmmax=2.0
+cfl_dtmmin=0.001
+
+# Simple setup configuration
+# We'll want to change this reference profile later
+thref0=298.7
+surface_pressure=101750.
+surface_reference_pressure=100000.
+x_size=1280
+y_size=1280
+z_size=121
+dxx=100
+dyy=100
+zztop=6000.0
+kgd=1,121
+hgd=0.0,6000.0
+nsmth=80
+galilean_transformation=.false.
+
+enable_theta=.true.
+use_anelastic_equations=.true.
+origional_vertical_grid_setup=.true.
+passive_th=.false.
+passive_q=.false.
+backscatter=.false.
+use_viscosity_and_diffusion=.true.
+l_matchthref=.false.
+
+smag-subb=1.43
+smag-subc=1.43
+
+# Random noise
+l_rand_pl_theta=.true.
+z_rand_pl_theta=0.0, 500.0, 501.0, 5000.
+f_rand_pl_theta=0.5, 0.5, 0.0001, 0.0001
+
+# Simple cloud
+max_height_cloud=6000.
+
+# Damping configuration
+dmptim=0.001
+zdmp=5200.0
+hdmp=800.0
+
+# physical constants
+z0=0.0002
+z0th=0.0002
+
+#CASIM options
+number_q_fields=5
+option=22000
+l_warm=.true.
+
+aerosol_option=0
+iopt_act=0
+iopt_inuc=0
+process_level=0
+l_override_checks = .true.
+fixed_cloud_number = 700.0e6
+
+# SOCRATES inputs
+mcc_temperature_profile  = components/socrates_couple/data/mcc_profiles/one_km/tro.t.nc
+mcc_vapour_profile       = components/socrates_couple/data/mcc_profiles/one_km/tro.q.nc
+mcc_ozone_profile        = components/socrates_couple/data/mcc_profiles/one_km/tro.o3.nc
+# Add options for rad_cntrl
+spectral_file_lw           = components/socrates_couple/data/spectra/ga7/sp_lw_ga7
+spectral_file_sw           = components/socrates_couple/data/spectra/ga7/sp_sw_ga7
+
+# 5 is clear sky, 2 is cloud (ice and liquid no overlap), 1 (ice and liquid full overlap)
+i_cloud_representation  = 2
+
+## Time and location variables for socrates
+l_360 = .false.          #  360 days in year as opposed to 365 (a UM thing
+                         #  in the LEM, is this still required??)
+l_solar_fixed  = .false. # true equals fixed insolation using value in sol_fixed
+l_no_solar     = .false.
+solar_fixed    = 1361.0  # prescribed insolation value
+sec_fixed      = 0.0   # prescribed 1/cos(solar_zenith_angle)
+latitude       = 0.0     # latitude: for testing, set extreme
+longitude      = -90.0   # longitude: for testing, set extreme
+rad_start_year = 2020.0  # simulation year for earth sun distance
+rad_start_day  = 29.0    # day number from January 1st
+rad_start_time = 0.0     # Start time for the radiation
+rad_interval   = 60      # Radiation calculation interval [integer, unit depends on time_basis]
+
+## Surface albedo variables for socrates
+l_variable_srf_albedo = .false. # not coded yet but will allow variable
+                                # surface albedo with solar zenith angle
+surface_albedo = 0.04    # surface albedo (fixed in time)
+
+mphys_nq_l=1 # cloud liquid mass
+mphys_nd_l=1 # cloud drop number
+mphys_nq_r=1 # rain mass
+mphys_nq_i=0 # ice mass
+mphys_nq_s=0 # snow mass
+mphys_nq_g=0 # graupel mass
+
+l_use_ndrop    = .true.
+l_fix_re       = .false.
+fixed_cloud_re = 10.0 # effective radius for cloud droplets 10 microns
+fixed_ice_re   = 30.0 # effective radius for ice 30 microns
