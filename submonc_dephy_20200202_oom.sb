@@ -78,7 +78,7 @@ if [ ! -d monc_stdout ]; then mkdir monc_stdout; fi
 if [ ! -d diagnostic_files ]; then mkdir diagnostic_files; fi
 
 # set env variables for submission command
-config_path='dephy_20200202_last_high.mcf'
+config_path='dephy_20200202_last_high_oom.mcf'
 checkpoint_fn="checkpoint_files/dephy_20200202_dump.nc"
 
 srun --unbuffered --cpu-bind=cores --distribution=block:block --hint=nomultithread ./build/bin/monc_driver.exe --config=$config_path  --checkpoint_file=$checkpoint_fn
