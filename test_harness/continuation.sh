@@ -120,7 +120,7 @@ run_monc() {
         # Cold start
         if [ $RUN_MONC_CONFIG -eq 1 ]; then
             echo "Start MONC with configuration file $TESTCASE"
-            eval '$cmd $MONC_EXEC --config=$TESTCASE --l_thoff=.false. >> $outputfn 2>&1'
+            eval '$cmd $MONC_EXEC --config=$TESTCASE >> $outputfn 2>&1'
 
         # Reconfiguration
         elif [ $RUN_MONC_CONFIG -eq 2 ]; then
@@ -135,7 +135,7 @@ run_monc() {
         # Restart
         else
             echo "Restarting MONC with checkpoint file $checkpoint_filename"
-            eval '$cmd $MONC_EXEC --checkpoint=$checkpoint_filename --l_thoff=.false. >> $outputfn 2>&1'
+            eval '$cmd $MONC_EXEC --checkpoint=$checkpoint_filename >> $outputfn 2>&1'
         fi # Check specific run flag
     fi # Check for active run flags.
 
