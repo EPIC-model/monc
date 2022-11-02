@@ -75,8 +75,10 @@ run_monc() {
             echo "Error, this is configured as a continuation run but output and/or checkpoint file not found, check your script parameters"
             exit
         fi
-    fi
+    fi # Check status of files
 
+
+    # Prepare submission and dependant submission if run flags set.
     if [ $RUN_MONC_CONFIG -ge 1 ] || [ $RUN_MONC_CP -eq 1 ]; then
         export OMP_NUM_THREADS=1
         export MPICH_MAX_THREAD_SAFETY=multiple
@@ -99,7 +101,7 @@ run_monc() {
         else
             echo "Error.  Unknown batch submission protocol."
             exit
-        fi
+        fi # Check scheduler
 
         # Increment the stdout suffix
         ((outputid++))
@@ -114,6 +116,7 @@ run_monc() {
         echo ""
 
 
+	# Submit job in manner corresponding to run flag.
         # Cold start
         if [ $RUN_MONC_CONFIG -eq 1 ]; then
             echo "Start MONC with configuration file $TESTCASE"
@@ -131,6 +134,21 @@ run_monc() {
         else
             echo "Restarting MONC with checkpoint file $checkpoint_filename"
             eval '$cmd $MONC_EXEC --checkpoint=$checkpoint_filename >> $outputfn 2>&1'
-      fi
-fi
+        fi # Check specific run flag
+    fi # Check for active run flags.
+
+
+    # Check completed job for errors
+    if grep -qi 'error\|Caught signal\|ATP analysis\|Segmentation' $outputfn ; then
+        # Check for new core file (unable to do anything about its name at this time).
+        if [ -f core ]; then
+            # Check whether core file is currently open
+            local val=$(lsof 2> /dev/null | grep $(pwd)/core | wc -c)
+            if [ $val -eq 0 ]; then  # File is closed, assume it belongs to this run.
+                mv core core.main.$jobId.$jobName
+	    else                     # File is open, assume it belongs to another run.
+                echo "Main core write failed, as core was already actively being written" > core.main.$jobId.$jobName.FAILED
+            fi
+	fi
+    fi # Core file handling.
 }

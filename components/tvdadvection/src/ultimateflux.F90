@@ -33,9 +33,9 @@ contains
     type(parallel_state_type), intent(inout) :: parallel
     real(kind=DEFAULT_PRECISION),  intent(in), dimension(:) :: rdz, rdzn, dzn
     real(kind=DEFAULT_PRECISION),  intent(inout), dimension(:) ::&
-         flux_z        &! flux through bottom cell face
+          flux_z         &! flux through bottom cell face
          ,flux_y         &! flux through left (y-dirn) cell face
-         ,flux_x       &   ! flux through left (x-dirn) cell face
+         ,flux_x         &! flux through left (x-dirn) cell face
          ,flux_previous_x
     r6 = 1.0_DEFAULT_PRECISION/6.0_DEFAULT_PRECISION
 

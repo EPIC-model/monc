@@ -13,7 +13,7 @@ module lowerbc_mod
   use registry_mod, only : is_component_enabled
   use logging_mod, only : LOG_ERROR, log_master_log
   use q_indices_mod, only: get_q_index, standard_q_names
-  use optionsdatabase_mod, only : options_get_logical
+  use optionsdatabase_mod, only : options_get_real, options_get_logical
   use mpi, only: MPI_REQUEST_NULL, MPI_STATUSES_IGNORE
   implicit none
 
@@ -27,7 +27,7 @@ module lowerbc_mod
         tolm=1.0E-4_DEFAULT_PRECISION,  tolt=1.0E-4_DEFAULT_PRECISION ! Convergence tollerance for u and t star
 
   real(kind=DEFAULT_PRECISION) :: tstrcona, rhmbc, ddbc, ddbc_x4, eecon, r2ddbc, rcmbc, tstrconb, &
-       x4con, xx0con, y2con, yy0con, viscous_courant_coefficient
+       x4con, xx0con, y2con, yy0con, viscous_courant_coefficient, max_diff_or_visc
 
   real(kind=DEFAULT_PRECISION), dimension(:,:,:), allocatable :: x_wrapping_send_buffer, y_wrapping_send_buffer, &
        x_wrapping_recv_buffer, y_wrapping_recv_buffer
@@ -52,6 +52,7 @@ contains
     type(model_state_type), target, intent(inout) :: current_state
 
     real(kind=DEFAULT_PRECISION) :: bhbc
+    real(kind=DEFAULT_PRECISION) :: dtmmin, cvismax
     integer :: num_wrapped_fields
 
     ! Adhill - this check is only required so that the vis_ and diff_coefficients
@@ -62,6 +63,9 @@ contains
     if (.not. is_component_enabled(current_state%options_database, "viscosity")) then
       call log_master_log(LOG_ERROR, "Lowerbc requires the viscosity component to be enabled")
     end if
+
+    dtmmin=options_get_real(current_state%options_database, "cfl_dtmmin")
+    cvismax=options_get_real(current_state%options_database, "cfl_cvismax")
 
     call allocate_applicable_fields(current_state)
 
@@ -106,6 +110,18 @@ contains
          1.0_DEFAULT_PRECISION/(current_state%global_grid%configuration%horizontal%dy*&
          current_state%global_grid%configuration%horizontal%dy)
     
+    ! Configure optional diffusion/viscosity surface exchange limiter value (very large number)
+    ! Used with prescribed surface fluxes only.
+    max_diff_or_visc = huge(0.5_DEFAULT_PRECISION)
+    if ( current_state%use_surface_boundary_conditions .and.  &
+         current_state%type_of_surface_boundary_conditions == PRESCRIBED_SURFACE_FLUXES .and. &
+         options_get_logical(current_state%options_database, "l_limit_surface_exchange") ) then
+      max_diff_or_visc = cvismax / (viscous_courant_coefficient * dtmmin * 4.0_DEFAULT_PRECISION)
+    else
+      max_diff_or_visc = huge(0.5_DEFAULT_PRECISION)  ! Default case
+    end if
+         
+
     if ( current_state%use_surface_boundary_conditions .and.  &
          current_state%type_of_surface_boundary_conditions == PRESCRIBED_SURFACE_VALUES) then
       ! variables below are only required when PRESCRIBED_SURFACE_VALUES are used. 
@@ -124,6 +140,7 @@ contains
        xx0con=gammam*z0
        y2con=gammah*(current_state%global_grid%configuration%vertical%zn(2)+z0)
        yy0con=gammah*z0th
+
     else
        tstrcona=0.0
        bhbc=0.0
@@ -262,9 +279,12 @@ contains
         ! _return viscous number
         !-----------------------
 
-        current_state%cvis=max(current_state%cvis,max(current_state%vis_coefficient%data(1, current_y_index, current_x_index),&
-             current_state%diff_coefficient%data(1, current_y_index, current_x_index))*viscous_courant_coefficient)
+        current_state%cvis=max( current_state%cvis, &
+                                max(current_state%vis_coefficient%data(1, current_y_index, current_x_index),  &
+                                    current_state%diff_coefficient%data(1, current_y_index, current_x_index)) &
+                                      *viscous_courant_coefficient )
         !            CVIS will be multiplied by DTM_X4 in TESTCFL
+
      else if (current_x_index == 1 .and. current_y_index == 1) then
         call register_async_wrapping_recv_requests(current_state)
      else if (current_x_index == current_state%local_grid%local_domain_end_index(X_INDEX)+&
@@ -446,12 +466,14 @@ contains
         y_wrapping_send_buffer(:,1,index_start+n)=zq(n)%data(1,first_y_index,:)
         y_wrapping_send_buffer(:,2,index_start+n)=zq(n)%data(1,second_y_index,:)
       end do
+      index_start = index_start + current_state%number_q_fields
     end if
     if (current_state%n_tracers .gt. 0) then
       do n=1, current_state%n_tracers
         y_wrapping_send_buffer(:,1,index_start+n)=ztracer(n)%data(1,first_y_index,:)
         y_wrapping_send_buffer(:,2,index_start+n)=ztracer(n)%data(1,second_y_index,:)
       end do
+      index_start = index_start + current_state%n_tracers
     end if
   end subroutine package_y_wrapping_send_buffer
 
@@ -482,12 +504,14 @@ contains
         x_wrapping_send_buffer(:,1,index_start+n)= zq(n)%data(1,:,first_x_index)
         x_wrapping_send_buffer(:,2,index_start+n)= zq(n)%data(1,:,second_x_index)
       end do
+      index_start = index_start + current_state%number_q_fields
     end if
     if (current_state%n_tracers .gt. 0) then
       do n=1, current_state%n_tracers
         x_wrapping_send_buffer(:,1,index_start+n)= ztracer(n)%data(1,:,first_x_index)
         x_wrapping_send_buffer(:,2,index_start+n)= ztracer(n)%data(1,:,second_x_index)
       end do
+      index_start = index_start + current_state%n_tracers
     end if
   end subroutine package_x_wrapping_send_buffer
 
@@ -518,12 +542,14 @@ contains
         zq(n)%data(1,first_y_index,:)=y_wrapping_recv_buffer(:,1,index_start+n)
         zq(n)%data(1,second_y_index,:)=y_wrapping_recv_buffer(:,2,index_start+n)
       end do
+      index_start = index_start + current_state%number_q_fields
     end if
     if (current_state%n_tracers .gt. 0) then
       do n=1, current_state%n_tracers
         ztracer(n)%data(1,first_y_index,:)=y_wrapping_recv_buffer(:,1,index_start+n)
         ztracer(n)%data(1,second_y_index,:)=y_wrapping_recv_buffer(:,2,index_start+n)
       end do
+      index_start = index_start + current_state%n_tracers
     end if
   end subroutine unpackage_y_wrapping_recv_buffer
 
@@ -554,12 +580,14 @@ contains
         zq(n)%data(1,:,first_x_index)=x_wrapping_recv_buffer(:,1,index_start+n)
         zq(n)%data(1,:,second_x_index)=x_wrapping_recv_buffer(:,2,index_start+n)
       end do
+      index_start = index_start + current_state%number_q_fields
     end if
     if (current_state%n_tracers .gt. 0) then
       do n=1, current_state%n_tracers
         ztracer(n)%data(1,:,first_x_index)=x_wrapping_recv_buffer(:,1,index_start+n)
         ztracer(n)%data(1,:,second_x_index)=x_wrapping_recv_buffer(:,2,index_start+n)
       end do
+      index_start = index_start + current_state%n_tracers
     end if
   end subroutine unpackage_x_wrapping_recv_buffer
 
@@ -577,11 +605,20 @@ contains
 
     current_state%vis_coefficient%data(1, current_y_index, current_x_index)=&
          current_state%global_grid%configuration%vertical%czn*ustr**2/ horizontal_velocity_at_k2
+
+         
     current_state%diff_coefficient%data(1, current_y_index, current_x_index)=&
          (von_karman_constant*current_state%global_grid%configuration%vertical%czn*ustr/alphah)/&
          (current_state%global_grid%configuration%vertical%zlogth- 2.*log(&
          (1.+sqrt(1.+gammah*von_karman_constant*current_state%fbuoy*(current_state%global_grid%configuration%vertical%zn(2)+z0)&
          /ustr**3))/ (1.+sqrt(1.+gammah*von_karman_constant*current_state%fbuoy*z0th/ustr**3))))
+         
+    ! Apply limiter (max_diff_or_visc) if set
+    current_state%vis_coefficient%data(1, current_y_index, current_x_index)=&
+         min(current_state%vis_coefficient%data(1, current_y_index, current_x_index), max_diff_or_visc)
+    current_state%diff_coefficient%data(1, current_y_index, current_x_index)=&
+         min(current_state%diff_coefficient%data(1, current_y_index, current_x_index), max_diff_or_visc)     
+         
     if (current_state%th%active) th%data(1, current_y_index, current_x_index)= &
          (current_state%surface_temperature_flux*current_state%global_grid%configuration%vertical%dzn(2)/&
          current_state%diff_coefficient%data(1, current_y_index, current_x_index))+th%data(2, current_y_index, current_x_index)-& 
@@ -636,9 +673,17 @@ contains
     ustr=horizontal_velocity_at_k2*current_state%global_grid%configuration%vertical%vk_on_zlogm
     current_state%vis_coefficient%data(1, current_y_index, current_x_index)=current_state%global_grid%configuration%vertical%czn*&
          ustr**2/horizontal_velocity_at_k2
+
     current_state%diff_coefficient%data(1, current_y_index, current_x_index)=&
          current_state%vis_coefficient%data(1, current_y_index, current_x_index)*&
          current_state%global_grid%configuration%vertical%zlogm/(alphah*current_state%global_grid%configuration%vertical%zlogth)
+
+    ! Apply limiter (max_diff_or_visc) if set
+    current_state%vis_coefficient%data(1, current_y_index, current_x_index)=&
+         min(current_state%vis_coefficient%data(1, current_y_index, current_x_index), max_diff_or_visc)
+    current_state%diff_coefficient%data(1, current_y_index, current_x_index)=&
+         min(current_state%diff_coefficient%data(1, current_y_index, current_x_index), max_diff_or_visc)     
+
     if (current_state%th%active) th%data(1, current_y_index, current_x_index)=  &
          (current_state%surface_temperature_flux*current_state%global_grid%configuration%vertical%dzn(2)/&
          current_state%diff_coefficient%data(1, current_y_index, current_x_index))+th%data(2, current_y_index, current_x_index)-& 
@@ -686,17 +731,24 @@ contains
            2.0_DEFAULT_PRECISION*ustr**3)-1.0_DEFAULT_PRECISION)+ 2.0_DEFAULT_PRECISION*pi)/3.0_DEFAULT_PRECISION))
       current_state%vis_coefficient%data(1, current_y_index, current_x_index)=&
            current_state%global_grid%configuration%vertical%czn*ustr**2/horizontal_velocity_at_k2
+
       current_state%diff_coefficient%data(1, current_y_index, current_x_index)=&
            current_state%vis_coefficient%data(1, current_y_index, current_x_index)*&
            (current_state%global_grid%configuration%vertical%zlogm-betam*current_state%global_grid%configuration%vertical%zn(2)*&
            von_karman_constant*current_state%fbuoy/ustr**3)/(alphah*current_state%global_grid%configuration%vertical%zlogth-betah*&
            von_karman_constant*current_state%fbuoy* (current_state%global_grid%configuration%vertical%zn(2)+ z0-z0th)/ustr**3)
+
+      ! Apply limiter (max_diff_or_visc) if set
+      current_state%vis_coefficient%data(1, current_y_index, current_x_index)=&
+           min(current_state%vis_coefficient%data(1, current_y_index, current_x_index), max_diff_or_visc)
+      current_state%diff_coefficient%data(1, current_y_index, current_x_index)=&
+           min(current_state%diff_coefficient%data(1, current_y_index, current_x_index), max_diff_or_visc)     
+
       if (current_state%th%active) th%data(1, current_y_index, current_x_index)= &
            (current_state%surface_temperature_flux*current_state%global_grid%configuration%vertical%dzn(2)/&
            current_state%diff_coefficient%data(1, current_y_index, current_x_index))+th%data(2, current_y_index, current_x_index)-& 
            current_state%global_grid%configuration%vertical%thref(1)+& 
            current_state%global_grid%configuration%vertical%thref(2)
-
 
       !Flux of vapour
       if (current_state%number_q_fields .gt. 0) then

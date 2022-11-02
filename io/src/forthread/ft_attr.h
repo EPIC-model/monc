@@ -28,7 +28,6 @@
 
 void thread_attr_destroy(int *attr, int *info);
 
-
 void thread_attr_init(int *attr, int *info);
 
 void thread_attr_getdetachstate(int *attr, int *detachstate, int *info);

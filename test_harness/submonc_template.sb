@@ -14,12 +14,14 @@
 # Make sure any symbolic links are resolved to absolute path 
 export SLURM_SUBMIT_DIR=$(readlink -f $SLURM_SUBMIT_DIR)
 
-# Change to the direcotry that the job was submitted from 
+# Change to the directory that the job was submitted from 
 cd $SLURM_SUBMIT_DIR
 
 # MODULES
+. env/add_modules
 module load atp
 export ATP_ENABLED=1
+module list
 
 # Recommended ARCHER2 I/O settings
 export FI_OFI_RXM_SAR_LIMIT=64K

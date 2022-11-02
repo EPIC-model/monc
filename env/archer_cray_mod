@@ -1,4 +1,4 @@
-module swap PrgEnv-gnu PrgEnv-cray
+module restore
 module load cray-hdf5-parallel
 module load cray-parallel-netcdf
 module load cray-netcdf-hdf5parallel

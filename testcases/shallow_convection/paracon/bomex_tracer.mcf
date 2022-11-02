@@ -200,6 +200,7 @@ constant_forcing_type_v=0
 use_surface_boundary_conditions=.true.
 use_time_varying_surface_values= .false.
 type_of_surface_boundary_conditions = 0 
+l_limit_surface_exchange=.true.
 surface_boundary_input_times = 0
 surface_latent_heat_flux   = 130.052
 surface_sensible_heat_flux = 8.04

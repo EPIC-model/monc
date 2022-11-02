@@ -18,7 +18,12 @@ module randomnoise_mod
   private
 #endif
 
-  integer, parameter :: MAX_SIZE_SEED_ARRAY=256, I_SEED=7
+  integer, parameter :: MAX_SIZE_SEED_ARRAY=256, &  ! large value to work on multiple systems
+                        I_SEED     = 7,          &  ! initial seed value,        non-reproducible case
+                        THETA_SEED = 8,          &  ! initial seed for theta,    reproducible case
+                        Q_SEED     = 100,        &  ! initial seed for q-fields, reproducible case
+                        W_SEED     = 9,          &  ! initial seed for w,        reproducible case
+                        MULTIPLIER = 10000          ! random number multiplier for re-seed
 
   public randomnoise_get_descriptor
 contains
@@ -37,13 +42,13 @@ contains
     type(model_state_type), target, intent(inout) :: current_state
 
     integer, dimension(MAX_SIZE_SEED_ARRAY) :: iranseed
-    real(kind=DEFAULT_PRECISION), dimension(:,:,:), allocatable :: randarr
     real(kind=DEFAULT_PRECISION) :: random_num
 
-    integer :: nq_rand ! The number of q fields to add noise to
-    integer :: nzq     ! The number of input levels for noise
-    integer :: i,j,k,n ! loop counters
-    integer :: iq      ! temporary q varible index
+    integer :: nq_rand   ! The number of q fields to add noise to
+    integer :: nzq       ! The number of input levels for noise
+    integer :: i,j,k,n,s ! loop counters
+    integer :: iq        ! temporary q varible index
+    integer :: iter, inc ! Muli-purpose variable for reproducible noise, and related counter
 
     real(kind=DEFAULT_PRECISION), dimension(:,:), allocatable :: f_rand_pl_q   ! Random Noise node amplitude for q variables
     real(kind=DEFAULT_PRECISION), dimension(:), allocatable :: z_rand_pl_q     ! Random Noise node height values for q variables
@@ -55,7 +60,7 @@ contains
     logical :: l_rand_pl_theta ! if .true. then random noise added to theta field
     logical :: l_rand_pl_q     ! if .true. then random noise added to q fields
     logical :: l_rand_pl_w     ! if .true. then random noise added to w field
-    logical :: l_rand_bit_reproducible ! if .true. then is bit reproducible between runs but domain (memory) size limited
+    logical :: l_rand_bit_reproducible ! if .true. then is bit reproducible between runs
 
     character(len=STRING_LENGTH), dimension(:), allocatable :: names_rand_pl_q ! names of q variables to add random noise to
 
@@ -71,16 +76,13 @@ contains
     l_rand_pl_q=options_get_logical(current_state%options_database, "l_rand_pl_q")
     l_rand_bit_reproducible=options_get_logical(current_state%options_database, "l_rand_bit_reproducible")
 
-    if (l_rand_bit_reproducible) then
-      allocate(randarr(current_state%global_grid%size(X_INDEX), current_state%global_grid%size(Y_INDEX), &
-           current_state%global_grid%size(Z_INDEX)))
-    else
-      iranseed=I_SEED+current_state%parallel%my_rank
-      call random_seed(put=iranseed)
-    end if
+    ! Initialise random seed to be different in every MONC
+    !  This is overwritten if l_rand_bit_reproducible=.true.
+    iranseed = I_SEED + current_state%parallel%my_rank
+    call random_seed(put = iranseed)
 
     if (l_rand_pl_q) then
-      
+
       allocate(names_rand_pl_q(options_get_array_size(current_state%options_database, "names_rand_pl_q")))
       if (size(names_rand_pl_q) .eq. 0) then
         call log_master_log(LOG_ERROR, "Model configured with l_rand_pl_q=.true., but no names_rand_pl_q "//&
@@ -90,12 +92,7 @@ contains
       call options_get_string_array(current_state%options_database, "names_rand_pl_q", names_rand_pl_q)
     end if
 
-    if (l_rand_bit_reproducible) iranseed(1:MAX_SIZE_SEED_ARRAY)=I_SEED
-
     if (l_rand_pl_theta)then
-      ! Get random numbers
-      if (l_rand_bit_reproducible) call random_seed(put=iranseed)
-      if (l_rand_bit_reproducible) call random_number(randarr)
 
       ! Get amplitude profiles
       allocate(z_rand_pl_theta(options_get_array_size(current_state%options_database, "z_rand_pl_theta")), &
@@ -107,21 +104,52 @@ contains
       zgrid=current_state%global_grid%configuration%vertical%zn(:)
       call piecewise_linear_1d(z_rand_pl_theta(1:size(z_rand_pl_theta)), f_rand_pl_theta(1:size(f_rand_pl_theta)), zgrid, &
            current_state%global_grid%configuration%vertical%theta_rand)
+
       do i=current_state%local_grid%local_domain_start_index(X_INDEX), current_state%local_grid%local_domain_end_index(X_INDEX)
         do j=current_state%local_grid%local_domain_start_index(Y_INDEX), current_state%local_grid%local_domain_end_index(Y_INDEX)
-          do k=2, current_state%local_grid%local_domain_end_index(Z_INDEX)   
+          do k=2, current_state%local_grid%local_domain_end_index(Z_INDEX)
+
+            ! Set a seed for each global grid point (unique based on 3-coordinate global index and variable)
             if (l_rand_bit_reproducible) then
-              current_state%th%data(k,j,i) = current_state%th%data(k,j,i) + &
-                   current_state%global_grid%configuration%vertical%theta_rand(k) * 2.0 * (randarr( &
-                   i-current_state%local_grid%local_domain_start_index(X_INDEX)+current_state%local_grid%start(X_INDEX), &
-                   j-current_state%local_grid%local_domain_start_index(Y_INDEX)+current_state%local_grid%start(Y_INDEX), &
-                   k)-0.5)
-            else
-              call random_number(random_num)
-              current_state%th%data(k,j,i) = current_state%th%data(k,j,i) + &
-                   current_state%global_grid%configuration%vertical%theta_rand(k) * 2.0 * (random_num-0.5)
+              iranseed(1::4) = &
+                  i-current_state%local_grid%local_domain_start_index(X_INDEX)+current_state%local_grid%start(X_INDEX)
+              iranseed(2::4) = &
+                  j-current_state%local_grid%local_domain_start_index(Y_INDEX)+current_state%local_grid%start(Y_INDEX)
+              iranseed(3::4) = k
+              iranseed(4::4) = THETA_SEED
+
+              ! Seed random numbers based on grid point address pattern
+              call random_seed(put = iranseed)
+
+              ! Create new seed array based on random numbers from above seed
+              do s = 1,MAX_SIZE_SEED_ARRAY
+                ! Begin with random number
+                call random_number(random_num)
+                ! Grab a digit off a modification of the random number
+                iter = dmod(random_num * THETA_SEED * MULTIPLIER, 10.0_DEFAULT_PRECISION) + 1
+                ! Iterate the random number based on the digit
+                ! and k, as the above seed structure can bafflingly result in the same structure for all levels
+                do inc=1,iter + k
+                  call random_number(random_num)
+                enddo
+                ! Grab a digit off the new ramdom number
+                iter = dmod(random_num * THETA_SEED * MULTIPLIER, 10.0_DEFAULT_PRECISION) + 1
+                ! Use the digit to modify the random number to create a new seed value
+                iranseed(s) = (-1)**mod(int(random_num * MULTIPLIER), iter)  &
+                                * int(random_num * 10.0_DEFAULT_PRECISION**(iter/2.0_DEFAULT_PRECISION))
+              end do
+
+              ! Re-seed the random number generator with address-unique random seeds
+              call random_seed(put = iranseed)
             end if
-          end do
+
+            ! Apply random number for this grid point
+            !   if not l_rand_bit_reproducible, then random_num is determined by local computer system
+            call random_number(random_num)
+            current_state%th%data(k,j,i) = current_state%th%data(k,j,i) + &
+                   current_state%global_grid%configuration%vertical%theta_rand(k) * 2.0 * (random_num-0.5)
+
+           end do
         end do
       end do
       deallocate(z_rand_pl_theta, f_rand_pl_theta)
@@ -146,9 +174,6 @@ contains
       allocate(f_rand_pl_q(nzq, nq_rand))
       f_rand_pl_q(1:nzq, 1:nq_rand)=reshape(f_rand_pl_q_tmp, (/nzq, nq_rand/))
       do n=1,nq_rand
-        ! Get random numbers
-        if (l_rand_bit_reproducible) call random_seed(get=iranseed)
-        if (l_rand_bit_reproducible) call random_number(randarr)
 
         iq=get_q_index(trim(names_rand_pl_q(n)), 'random noise')
         zgrid=current_state%global_grid%configuration%vertical%zn(:)
@@ -156,18 +181,41 @@ contains
              current_state%global_grid%configuration%vertical%q_rand(:,iq))
         do i=current_state%local_grid%local_domain_start_index(X_INDEX), current_state%local_grid%local_domain_end_index(X_INDEX)
           do j=current_state%local_grid%local_domain_start_index(Y_INDEX), current_state%local_grid%local_domain_end_index(Y_INDEX)
-            do k=2, current_state%local_grid%local_domain_end_index(Z_INDEX)   
+            do k=2, current_state%local_grid%local_domain_end_index(Z_INDEX)
+
+              ! Set a seed for each global grid point (unique based on 3-coordinate global index and variable)
               if (l_rand_bit_reproducible) then
-                current_state%q(iq)%data(k,j,i) = current_state%q(iq)%data(k,j,i) + &
-                     current_state%global_grid%configuration%vertical%q_rand(k,iq) * 2.0 * (randarr( &
-                     i-current_state%local_grid%local_domain_start_index(X_INDEX)+current_state%local_grid%start(X_INDEX), &
-                     j-current_state%local_grid%local_domain_start_index(Y_INDEX)+current_state%local_grid%start(Y_INDEX), &
-                     k)-0.5)
-              else
-                call random_number(random_num)
-                current_state%q(iq)%data(k,j,i) = current_state%q(iq)%data(k,j,i) + &
-                     current_state%global_grid%configuration%vertical%q_rand(k,iq) * 2.0 * (random_num-0.5)
+                iranseed(1::4) = &
+                    i-current_state%local_grid%local_domain_start_index(X_INDEX)+current_state%local_grid%start(X_INDEX)
+                iranseed(2::4) = &
+                    j-current_state%local_grid%local_domain_start_index(Y_INDEX)+current_state%local_grid%start(Y_INDEX)
+                iranseed(3::4) = k
+                iranseed(4::4) = Q_SEED + n
+
+                ! Seed random numbers based on grid point address pattern
+                call random_seed(put = iranseed)
+  
+                ! Create new seed array based on random numbers from above seed
+                do s = 1,MAX_SIZE_SEED_ARRAY
+                  call random_number(random_num)
+                  iter = dmod(random_num * Q_SEED * MULTIPLIER, 10.0_DEFAULT_PRECISION) + 1
+                  do inc=1,iter + k
+                    call random_number(random_num)
+                  enddo
+                  iter = dmod(random_num * Q_SEED * MULTIPLIER, 10.0_DEFAULT_PRECISION) + 1
+                  iranseed(s) = (-1)**mod(int(random_num * MULTIPLIER), iter)  &
+                                  * int(random_num * 10.0_DEFAULT_PRECISION**(iter/2.0_DEFAULT_PRECISION))
+                end do
+  
+                ! Re-seed the random number generator with address-unique random seeds
+                call random_seed(put = iranseed)
               end if
+
+              ! Apply random number for this grid point
+              !   if not l_rand_bit_reproducible, then random_num is determined by local computer system
+              call random_number(random_num)
+              current_state%q(iq)%data(k,j,i) = current_state%q(iq)%data(k,j,i) + &
+                     current_state%global_grid%configuration%vertical%q_rand(k,iq) * 2.0 * (random_num-0.5)
             end do
           end do
         end do
@@ -176,13 +224,10 @@ contains
     end if
 
     if (l_rand_pl_w)then
-      ! Get random numbers
-      if (l_rand_bit_reproducible) call random_seed(get=iranseed)
-      if (l_rand_bit_reproducible) call random_number(randarr)
 
       ! Get amplitude profiles
       allocate(z_rand_pl_w(options_get_array_size(current_state%options_database, "z_rand_pl_w")), &
-           f_rand_pl_w(options_get_array_size(current_state%options_database, "f_rand_pl_w"))) 
+           f_rand_pl_w(options_get_array_size(current_state%options_database, "f_rand_pl_w")))
       call options_compare_profile_arrays(current_state%options_database, &
                                 "z_rand_pl_w", "f_rand_pl_w", "w perturbation")
       call options_get_real_array(current_state%options_database, "z_rand_pl_w", z_rand_pl_w)
@@ -193,18 +238,41 @@ contains
            current_state%global_grid%configuration%vertical%w_rand)
       do i=current_state%local_grid%local_domain_start_index(X_INDEX), current_state%local_grid%local_domain_end_index(X_INDEX)
         do j=current_state%local_grid%local_domain_start_index(Y_INDEX), current_state%local_grid%local_domain_end_index(Y_INDEX)
-          do k=2, current_state%local_grid%local_domain_end_index(Z_INDEX) 
+          do k=2, current_state%local_grid%local_domain_end_index(Z_INDEX)
+
+            ! Set a random seed for each global grid point (unique based on 3-coordinate global index and variable)
             if (l_rand_bit_reproducible) then
-              current_state%w%data(k,j,i) = current_state%w%data(k,j,i) + &
-                   current_state%global_grid%configuration%vertical%w_rand(k) * (randarr( &
-                   i-current_state%local_grid%local_domain_start_index(X_INDEX)+current_state%local_grid%start(X_INDEX), &
-                   j-current_state%local_grid%local_domain_start_index(Y_INDEX)+current_state%local_grid%start(Y_INDEX), &
-                   k)-0.5)
-            else
-              call random_number(random_num)
-              current_state%w%data(k,j,i) = current_state%w%data(k,j,i) + &
-                   current_state%global_grid%configuration%vertical%w_rand(k) * (random_num-0.5)
+              iranseed(1::4) = &
+                  i-current_state%local_grid%local_domain_start_index(X_INDEX)+current_state%local_grid%start(X_INDEX)
+              iranseed(2::4) = &
+                  j-current_state%local_grid%local_domain_start_index(Y_INDEX)+current_state%local_grid%start(Y_INDEX)
+              iranseed(3::4) = k
+              iranseed(4::4) = W_SEED
+
+              ! Seed random numbers based on grid point address pattern
+              call random_seed(put = iranseed)
+
+              ! Create new seed array based on random numbers from above seed
+              do s = 1,MAX_SIZE_SEED_ARRAY
+                call random_number(random_num)
+                iter = dmod(random_num * W_SEED * MULTIPLIER, 10.0_DEFAULT_PRECISION) + 1
+                do inc=1,iter + k
+                  call random_number(random_num)
+                enddo
+                iter = dmod(random_num * W_SEED * MULTIPLIER, 10.0_DEFAULT_PRECISION) + 1
+                iranseed(s) = (-1)**mod(int(random_num * MULTIPLIER), iter)  &
+                                * int(random_num * 10.0_DEFAULT_PRECISION**(iter/2.0_DEFAULT_PRECISION))
+              end do
+
+              ! Re-seed the random number generator with address-unique random seeds
+              call random_seed(put = iranseed)
             end if
+
+            ! Apply random number for this grid point
+            !   if not l_rand_bit_reproducible, then random_num is determined by local computer system
+            call random_number(random_num)
+            current_state%w%data(k,j,i) = current_state%w%data(k,j,i) + &
+                   current_state%global_grid%configuration%vertical%w_rand(k) * (random_num-0.5)
           end do
 #ifdef W_ACTIVE
           current_state%w%data(current_state%local_grid%local_domain_end_index(Z_INDEX),j,i)=0.0_DEFAULT_PRECISION
@@ -230,6 +298,5 @@ contains
       deallocate(z_rand_pl_w, f_rand_pl_w)
     end if
     deallocate(zgrid)
-    if (l_rand_bit_reproducible) deallocate(randarr)          
   end subroutine initialisation_callback
 end module randomnoise_mod

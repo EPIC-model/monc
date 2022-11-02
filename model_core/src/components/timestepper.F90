@@ -93,6 +93,7 @@ contains
 
     ! For print_debug_data, the column_global fields must match the requested coordinate.
     ! This is already handled for the timestep_column, but needs to be specially set for timestep_whole.
+    !  This should not affect update_state_sitation_flags, as that is only used for timestep_column.
     if (current_state%print_debug_data) then
       current_state%column_global_x = current_state%pdd_x
       current_state%column_global_y = current_state%pdd_y

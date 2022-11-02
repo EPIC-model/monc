@@ -75,8 +75,10 @@ run_monc() {
             echo "Error, this is configured as a continuation run but output and/or checkpoint file not found, check your script parameters"
             exit
         fi
-    fi
+    fi # Check status of files
 
+
+    # Prepare submission and dependant submission if run flags set.
     if [ $RUN_MONC_CONFIG -ge 1 ] || [ $RUN_MONC_CP -eq 1 ]; then
         export OMP_NUM_THREADS=1
         export MPICH_MAX_THREAD_SAFETY=multiple
@@ -88,20 +90,18 @@ run_monc() {
             local jobId=$PBS_JOBID
             local jobName=$PBS_JOBNAME
             local cmd="aprun -n ${NPES}"
-            local atpWait=""
 
         #  Slurm
         elif [ -x "$(command -v sbatch)" ] ; then
-            local submittedId=$(sbatch --dependency=afterany:$SLURM_JOB_ID --export=crun=$outputid,cpfile=$checkpoint_filename $SUBMISSION_SCRIPT_NAME | awk '{ print $4 }')
+            local submittedId=$(sbatch --parsable --dependency=afterany:$SLURM_JOB_ID --export=crun=$outputid,cpfile=$checkpoint_filename $SUBMISSION_SCRIPT_NAME)
             local jobId=$SLURM_JOB_ID
             local jobName=$SLURM_JOB_NAME
             sb_flags='--unbuffered --cpu-bind=cores --distribution=block:block --hint=nomultithread'
             local cmd="srun $sb_flags"
-            local atpWait=" & ; wait"
         else
             echo "Error.  Unknown batch submission protocol."
             exit
-        fi
+        fi # Check scheduler
 
         # Increment the stdout suffix
         ((outputid++))
@@ -116,10 +116,11 @@ run_monc() {
         echo ""
 
 
+	# Submit job in manner corresponding to run flag.
         # Cold start
         if [ $RUN_MONC_CONFIG -eq 1 ]; then
             echo "Start MONC with configuration file $TESTCASE"
-            eval '$cmd $MONC_EXEC --config=$TESTCASE >> $outputfn 2>&1 $atpWait'
+            eval '$cmd $MONC_EXEC --config=$TESTCASE --l_thoff=.false. >> $outputfn 2>&1'
 
         # Reconfiguration
         elif [ $RUN_MONC_CONFIG -eq 2 ]; then
@@ -134,7 +135,22 @@ run_monc() {
         # Restart
         else
             echo "Restarting MONC with checkpoint file $checkpoint_filename"
-            eval '$cmd $MONC_EXEC --checkpoint=$checkpoint_filename >> $outputfn 2>&1 $atpWait'
-      fi
-fi
+            eval '$cmd $MONC_EXEC --checkpoint=$checkpoint_filename --l_thoff=.false. >> $outputfn 2>&1'
+        fi # Check specific run flag
+    fi # Check for active run flags.
+
+
+    # Check completed job for errors
+    if grep -qi 'error\|Caught signal\|ATP analysis\|Segmentation' $outputfn ; then
+        # Check for new core file (unable to do anything about its name at this time).
+        if [ -f core ]; then
+            # Check whether core file is currently open
+            local val=$(lsof 2> /dev/null | grep $(pwd)/core | wc -c)
+            if [ $val -eq 0 ]; then  # File is closed, assume it belongs to this run.
+                mv core core.main.$jobId.$jobName
+	    else                     # File is open, assume it belongs to another run.
+                echo "Main core write failed, as core was already actively being written" > core.main.$jobId.$jobName.FAILED
+            fi
+	fi
+    fi # Core file handling.
 }

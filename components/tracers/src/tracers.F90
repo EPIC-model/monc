@@ -147,7 +147,22 @@ contains
       current_state%ztracer(ixr)%data(:,:,:) = current_state%tracer(ixr)%data(:,:,:) + diffr_copy
       current_state%ztracer(ixi)%data(:,:,:) = current_state%tracer(ixi)%data(:,:,:) + diffi_copy
 !        end if
-    end if
+
+      ! Reset advection fields
+      if (allocated(current_state%tracer(ixr)%flux_previous_y)) then
+        current_state%tracer(ixr)%flux_previous_y(:) = 0.0_DEFAULT_PRECISION
+        current_state%tracer(ixi)%flux_previous_y(:) = 0.0_DEFAULT_PRECISION
+      end if
+      if (allocated(current_state%tracer(ixr)%flux_y_buffer)) then
+        current_state%tracer(ixr)%flux_y_buffer(:) = 0.0_DEFAULT_PRECISION
+        current_state%tracer(ixi)%flux_y_buffer(:) = 0.0_DEFAULT_PRECISION
+      end if
+      if (allocated(current_state%tracer(ixr)%flux_previous_x)) then
+        current_state%tracer(ixr)%flux_previous_x(:,:) = 0.0_DEFAULT_PRECISION
+        current_state%tracer(ixi)%flux_previous_x(:,:) = 0.0_DEFAULT_PRECISION
+      end if
+
+    end if !tracer(ixr)%active
     
     if (current_state%tracer(iyr)%active) then
 !        if (.not. current_state%continuation_run) then
@@ -177,7 +192,22 @@ contains
       current_state%ztracer(iyr)%data(:,:,:) = current_state%tracer(iyr)%data(:,:,:) + diffr_copy
       current_state%ztracer(iyi)%data(:,:,:) = current_state%tracer(iyi)%data(:,:,:) + diffi_copy
 !        end if
-    end if
+
+      ! Reset advection fields
+      if (allocated(current_state%tracer(iyr)%flux_previous_y)) then
+        current_state%tracer(iyr)%flux_previous_y(:) = 0.0_DEFAULT_PRECISION
+        current_state%tracer(iyi)%flux_previous_y(:) = 0.0_DEFAULT_PRECISION
+      end if
+      if (allocated(current_state%tracer(iyr)%flux_y_buffer)) then
+        current_state%tracer(iyr)%flux_y_buffer(:) = 0.0_DEFAULT_PRECISION
+        current_state%tracer(iyi)%flux_y_buffer(:) = 0.0_DEFAULT_PRECISION
+      end if
+      if (allocated(current_state%tracer(iyr)%flux_previous_x)) then
+        current_state%tracer(iyr)%flux_previous_x(:,:) = 0.0_DEFAULT_PRECISION
+        current_state%tracer(iyi)%flux_previous_x(:,:) = 0.0_DEFAULT_PRECISION
+      end if
+
+    end if !tracer(iyr)%active
     
     if (current_state%tracer(iz)%active)then
 !        if (.not. current_state%continuation_run) then
@@ -199,7 +229,16 @@ contains
       end if
       current_state%ztracer(iz)%data(:,:,:) = current_state%tracer(iz)%data(:,:,:) + diffr_copy
 !        end if
-    end if 
+
+      ! Reset advection fields
+      if (allocated(current_state%tracer(iz)%flux_previous_y)) &
+        current_state%tracer(iz)%flux_previous_y(:) = 0.0_DEFAULT_PRECISION
+      if (allocated(current_state%tracer(iz)%flux_y_buffer)) &
+        current_state%tracer(iz)%flux_y_buffer(:) = 0.0_DEFAULT_PRECISION
+      if (allocated(current_state%tracer(iz)%flux_previous_x)) &
+        current_state%tracer(iz)%flux_previous_x(:,:) = 0.0_DEFAULT_PRECISION
+
+    end if !tracer(iz)%active
     
   end subroutine reinitialise_trajectories
   

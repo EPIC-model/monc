@@ -341,6 +341,11 @@ contains
          q_advection(current_state%global_grid%size(Z_INDEX), current_state%number_q_fields), &
          tracer_advection(current_state%global_grid%size(Z_INDEX), current_state%n_tracers))
 
+    ! Initialise terms
+    flux_y(:) = 0.0_DEFAULT_PRECISION
+    flux_x(:) = 0.0_DEFAULT_PRECISION
+    flux_z(:) = 0.0_DEFAULT_PRECISION
+
     advect_flow=determine_if_advection_here(options_get_string(current_state%options_database, "advection_flow_fields"))    
     advect_th=determine_if_advection_here(options_get_string(current_state%options_database, "advection_theta_field"))
     advect_q=determine_if_advection_here(options_get_string(current_state%options_database, "advection_q_fields"))

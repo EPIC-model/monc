@@ -659,9 +659,11 @@ contains
              current_state%column_global_y == current_state%pdd_y)) then
           
           ! Convert to local MONC array indices
+          !   For timestep_column components, we could simply use current_state%column_local_*, but
+          !   that variable is non-sensical for timestep_whole components.  So we calculate for all cases for simplicity.
           k = current_state%pdd_z
-          i = current_state%pdd_x - current_state%local_grid%start(X_INDEX) + 1
-          j = current_state%pdd_y - current_state%local_grid%start(Y_INDEX) + 1
+          i = current_state%pdd_x - current_state%local_grid%start(X_INDEX) + 1 + current_state%local_grid%halo_size(X_INDEX)
+          j = current_state%pdd_y - current_state%local_grid%start(Y_INDEX) + 1 + current_state%local_grid%halo_size(Y_INDEX)
 
           ! Actual printing
           print *, trim(debug_label),':',trim(map_entry%key),', (k,j,i):',k,j,i, &

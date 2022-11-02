@@ -821,6 +821,19 @@ contains
       end if
     end if
 
+    ! Check l_constant_dtm for consistency
+    if (options_get_logical(current_state%options_database, "l_constant_dtm")) then
+      if (current_state%time_basis) then
+        if (any(mod(real( current_state%sampling(:)%interval), real(current_state%dtm)) .gt. 0)) then
+          call log_master_log(LOG_ERROR, "All sampling intervals must be a multiple of dtm "//&
+                                         "when l_constant_dtm=.true.")
+        end if
+      else if (current_state%force_output_on_interval) then
+        call log_master_log(LOG_ERROR, "Use of l_constant_dtm requires force_output_on_interval"//&
+                            "=.false. and time_basis=.false. or time_basis=.true. with all"//&
+                            " sampling intervals a multiple of dtm.")
+      end if
+    end if
   end subroutine register_with_io_server
 
   !> Retrieve the total number of fields, which is all the fields in all the data definitions
@@ -1348,20 +1361,6 @@ contains
     if (current_state%force_output_on_interval .and. current_state%time_basis) &
       call log_master_log(LOG_WARN, "Both force_output_on_interval and time_basis are set to "//&
                                     ".true..  Behaviour defaults to that of time_basis.")
-
-    ! Check l_constant_dtm for consistency
-    if (options_get_logical(current_state%options_database, "l_constant_dtm")) then
-      if (current_state%time_basis) then
-        if (any(mod(real( current_state%sampling(:)%interval), real(current_state%dtm)) .gt. 0)) then
-          call log_master_log(LOG_ERROR, "All sampling intervals must be a multiple of dtm "//&
-                                         "when l_constant_dtm=.true.")
-        end if
-      else if (current_state%force_output_on_interval) then
-        call log_master_log(LOG_ERROR, "Use of l_constant_dtm requires force_output_on_interval"//&
-                            "=.false. and time_basis=.false. or time_basis=.true. with all"//&
-                            " sampling intervals a multiple of dtm.")
-      end if
-    end if
 
     ! Record SOCRATES information, if enabled
     socrates_enabled = is_component_enabled(current_state%options_database, "socrates_couple")

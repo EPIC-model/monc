@@ -18,39 +18,53 @@
 ! |call ffte_finalise() !clean up work arrays                                      |
 !  --------------------------------------------------------------------------------
 !
-module ffte_mod
+module fftnorth_mod
     use vzfft1d_mod, only : ZFFT1D
+    use fftpack, only: zffti, zfftf, zfftb
+    use fftpack_kind, only: rk
 
     implicit none
+
+    integer, parameter, public :: FFT_FFTE = 0
+    integer, parameter, public :: FFT_FFTPACK = 1
     
-    complex*16, allocatable, dimension(:) :: wk ! work array for the FFT calculations
-    complex*16, allocatable, dimension(:) :: data !the array that will have the in-place FFT applied to it
+    complex(rk), allocatable, dimension(:) :: wk   ! Work array for the FFT calculations
+    complex(rk), allocatable, dimension(:) :: data ! The array that will have the in-place FFT applied to it
+
+    real(rk), allocatable, dimension(:) :: wsave
+
+    logical :: is235
 
     contains
     
-    !initialises the FFTE routines for the real problem size (n)
-    subroutine ffte_init(n)
-        integer, intent(in) :: n
+    ! Initialises the FFT routines for the real problem size (n)
+    subroutine fftn_init(n, fft)
+        integer, intent(in) :: n, fft
         
-        !check that n is a valid size for FFTE to handle
-        if (.not. ffte_check_factors(n)) then
-            stop "FFTE: FFT size, n, can only contain prime factors of 2, 3 and 5"
-        endif
-        
-        !allocate work and data arrays
-        allocate(wk(2*n))
-        allocate(data(n))
-        
-        !initialise FFTE
-        call ZFFT1D(data,n,0,wk)
+        select case (fft)
+        case (FFT_FFTE)
+            !check that n is a valid size for FFTE to handle
+            is235 = fftn_check_factors(n)
+        case (FFT_FFTPACK)
+            is235 = .false.
+        end select
 
+        allocate(data(n))
+        if (is235) then
+            !allocate work and data arrays
+            allocate(wk(2*n))
+            call ZFFT1D(data,n,0,wk) !initialise FFTE
+        else
+            allocate(wsave(4*n+15))
+            call zffti(n, wsave)
+        endif
     end subroutine
     
     !computes a real-to-complex (e.g. forward) FFT
     ! in  : double precision real array of size n (input)
     ! out : double precision complex array of size n/2+1 (output)
     ! n   : integer - size of in (input)
-    subroutine ffte_r2c(in, out, n)
+    subroutine fftn_r2c(in, out, n)
         integer, intent(in) :: n
         double precision, intent(in) :: in(n)
         complex*16, intent(out) :: out(n/2+1)
@@ -61,9 +75,13 @@ module ffte_mod
         do i=1,n
             data(i) = dcmplx(in(i), 0.d0)
         enddo
-        
-        !compute forward FFT (in-place on data)
-        call ZFFT1D(data,n,-1,wk)
+
+        if(is235) then
+            !compute forward FFT (in-place on data)
+            call ZFFT1D(data,n,-1,wk)
+        else
+            call zfftf(n,data,wsave)
+        endif
 
         !extract the first n/2+1 terms from the FFT and return them as output
         !(The last n/2-1 terms of r2c are complex conjugates of the previous 
@@ -76,7 +94,7 @@ module ffte_mod
     ! in  : double precision complex array of size n/2+1 (input)
     ! out : double precision real array of size n (output)
     ! n   : integer - size of out (input)
-    subroutine ffte_c2r(in,out,n)
+    subroutine fftn_c2r(in,out,n)
         integer, intent(in) :: n
         complex*16, intent(in) :: in(n/2+1)
         double precision, intent(out) :: out(n)
@@ -92,29 +110,41 @@ module ffte_mod
             data(i) = dconjg(in(n-i+2))
         enddo
         
+        if(is235) then
+            !do the inverse fft (in place on data)
+            call ZFFT1D(data,n,1,wk)
+            !extract the real part of data and place it in out
+            do i=1,n
+               out(i) = real(data(i))
+            enddo
+        else
+            call zfftb(n,data,wsave)
+            !extract the real part of data and place it in out
+            do i=1,n
+               out(i) = real(data(i))/n
+            enddo
+        endif
         
-        !do the inverse fft (in place on data)
-        call ZFFT1D(data,n,1,wk)
         
-        !extract the real part of data and place it in out
-        do i=1,n
-            !out(i) = realpart(data(i))
-           out(i) = real(data(i))
-        enddo
 
     end subroutine
     
     !Finalises the FFTE routines
-    subroutine ffte_finalise()
+    subroutine fftn_finalise()
         
         !deallocate the work arrays
-        deallocate(wk,data)
+        deallocate(data)
+        if(is235) then
+            deallocate(wk)
+        else
+            deallocate(wsave)
+        endif
 
     end subroutine
     
     !Checks to see if the input, n, only has prime factors of 2, 3 and 5
     ! If it does, return true. Otherwise, return false
-    logical function ffte_check_factors(n)
+    logical function fftn_check_factors(n)
         integer, intent(in) :: n
         integer :: m
 
@@ -133,11 +163,11 @@ module ffte_mod
         enddo
 
         if (m .eq. 1) then
-            ffte_check_factors= .true.
+            fftn_check_factors= .true.
         else
-            ffte_check_factors= .false.
+            fftn_check_factors= .false.
         endif
 
     end function
 
-end module ffte_mod
+end module fftnorth_mod
