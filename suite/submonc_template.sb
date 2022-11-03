@@ -1,0 +1,48 @@
+#!/bin/bash
+#SBATCH --job-name=add_qname
+#SBATCH --output=add_odir%x.o%j
+#SBATCH --open-mode=append
+#SBATCH --nodes=add_select
+#SBATCH --ntasks-per-node=128
+#SBATCH --ntasks=add_np
+#SBATCH --time=add_walltime
+#SBATCH --partition=standard
+#SBATCH --qos=add_queue
+### #SBATCH --qos=taskfarm
+### #SBATCH --qos=standard
+#SBATCH --account=add_project
+
+# Make sure any symbolic links are resolved to absolute path 
+export SLURM_SUBMIT_DIR=$(readlink -f $SLURM_SUBMIT_DIR)
+
+# Change to the direcotry that the job was submitted from 
+cd $SLURM_SUBMIT_DIR
+
+# MODULES
+module load atp
+export ATP_ENABLED=1
+
+# Recommended ARCHER2 I/O settings
+export FI_OFI_RXM_SAR_LIMIT=64K
+
+export SUBMISSION_SCRIPT_NAME=add_scriptname
+export MONC_EXEC=./build/bin/monc_driver.exe
+##  cp ./version add_vncp
+export TESTCASE=add_mcf
+export STDOUT_DIR=add_stdout_dirname
+export CP_DIR=add_checkpoint_dirname
+export RUN_NAME=add_runname
+export MAX_CONTINUATION_RUNS=200
+
+ulimit -c unlimited
+
+echo -e "\nSubmission time: $(date)\n"
+echo -e "Submitting from: $(pwd)\n"
+
+. add_condir/continuation.sh
+run_monc
+
+# Output job statistics
+echo -e "\nCompletion time: $(date)\n"
+scontrol show job $SLURM_JOB_ID
+sstat $SLURM_JOB_ID --format="AveRSS,MaxRSS"
