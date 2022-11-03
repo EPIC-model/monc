@@ -321,7 +321,7 @@ contains
         new_entry%previous_time=model_initial_time
         new_entry%empty_values=.true.
         new_entry%previous_output_time = real(model_initial_time) &
-                                           - mod(real(model_initial_time), output_frequency)
+                                           - modulo(real(model_initial_time), output_frequency)
         call check_thread_status(forthread_mutex_init(new_entry%mutex, -1))
         generic=>new_entry
         call c_put_generic(timeaveraged_values, field_name, generic, .false.)

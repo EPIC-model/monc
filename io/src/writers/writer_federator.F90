@@ -115,7 +115,7 @@ contains
       end if
       if (writer_entries(i)%write_time_frequency .gt. 0 ) then
         writer_entries(i)%previous_write_time = real(reconfig_initial_time) &
-                                          - mod(real(reconfig_initial_time),writer_entries(i)%write_time_frequency)
+                                          - modulo(real(reconfig_initial_time),writer_entries(i)%write_time_frequency)
       else 
         writer_entries(i)%previous_write_time = 0.0
       end if
@@ -1762,7 +1762,7 @@ contains
     writer_entries(writer_entry_index)%contents(my_facet_index)%previous_write_time=0.0
     writer_entries(writer_entry_index)%contents(my_facet_index)%previous_tracked_write_point = &
          real(model_initial_time) &
-             - mod(real(model_initial_time), writer_entries(writer_entry_index)%contents(my_facet_index)%output_frequency)
+             - modulo(real(model_initial_time), writer_entries(writer_entry_index)%contents(my_facet_index)%output_frequency)
     writer_entries(writer_entry_index)%contents(my_facet_index)%duplicate_field_name=.false.
     writer_entries(writer_entry_index)%contents(my_facet_index)%pending_to_write=.false.
     writer_entries(writer_entry_index)%contents(my_facet_index)%enabled=.false.

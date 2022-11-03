@@ -95,7 +95,7 @@ contains
     if (c_contains(existing_instantaneous_writes, field_name)) then
       previous_time_write=real(c_get_real(existing_instantaneous_writes, field_name))
     else ! Typically at first use of function
-      previous_time_write = real(model_initial_time) - mod(real(model_initial_time), output_frequency)
+      previous_time_write = real(model_initial_time) - modulo(real(model_initial_time), output_frequency)
     end if
 
     time_difference = real(time) - previous_time_write

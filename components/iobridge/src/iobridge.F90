@@ -824,7 +824,7 @@ contains
     ! Check l_constant_dtm for consistency
     if (options_get_logical(current_state%options_database, "l_constant_dtm")) then
       if (current_state%time_basis) then
-        if (any(mod(real( current_state%sampling(:)%interval), real(current_state%dtm)) .gt. 0)) then
+        if (any(modulo(real( current_state%sampling(:)%interval), real(current_state%dtm)) .gt. 0)) then
           call log_master_log(LOG_ERROR, "All sampling intervals must be a multiple of dtm "//&
                                          "when l_constant_dtm=.true.")
         end if

@@ -449,7 +449,7 @@ contains
         allocate(get_or_add_field_ordering)
         get_or_add_field_ordering%last_timestep_access=0
         get_or_add_field_ordering%last_time_access = merge(                                   &
-                    nint(model_initial_time - mod(real(model_initial_time),real(frequency))), &
+                    nint(model_initial_time - modulo(real(model_initial_time),real(frequency))), &
                     0,                                                                        &
                     frequency .gt. 0 )
         get_or_add_field_ordering%frequency=frequency
