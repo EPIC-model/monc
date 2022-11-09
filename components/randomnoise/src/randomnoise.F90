@@ -202,8 +202,10 @@ contains
   
         else ! not l_rand_bit_reproducible
   
-          do i=current_state%local_grid%local_domain_start_index(X_INDEX), current_state%local_grid%local_domain_end_index(X_INDEX)
-            do j=current_state%local_grid%local_domain_start_index(Y_INDEX), current_state%local_grid%local_domain_end_index(Y_INDEX)
+          do i=current_state%local_grid%local_domain_start_index(X_INDEX), &
+               current_state%local_grid%local_domain_end_index(X_INDEX)
+            do j=current_state%local_grid%local_domain_start_index(Y_INDEX), &
+                 current_state%local_grid%local_domain_end_index(Y_INDEX)
               do k=2, current_state%local_grid%local_domain_end_index(Z_INDEX)
   
                 ! Apply random number for this grid point
