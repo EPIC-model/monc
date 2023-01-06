@@ -63,9 +63,9 @@ module load atp
 export ATP_ENABLED=1
 
 if [ $compiler == "gnu" ]; then
-  fcmconfig="fcm-make/monc-cray-gnu.cfg"
+  fcmconfig="fcm-make/monc-cray-gnu-safe.cfg"
 elif [ $compiler == "cray" ]; then
-  fcmconfig="fcm-make/monc-cray-cray.cfg"
+  fcmconfig="fcm-make/monc-cray-cray-safe.cfg"
 fi
 
 echo "Compile options: "
