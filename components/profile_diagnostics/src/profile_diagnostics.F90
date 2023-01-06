@@ -97,7 +97,7 @@ contains
     profile_diagnostics_get_descriptor%published_fields(23)="wtheta_cn_total_local"
     profile_diagnostics_get_descriptor%published_fields(24)="th2_total_local"
 
-    profile_diagnostics_get_descriptor%published_fields(25)="vapour_mmr_total_local"
+    profile_diagnostics_get_descriptor%published_fields(25)="total_mmr_total_local"
     profile_diagnostics_get_descriptor%published_fields(26)="liquid_mmr_total_local"
     profile_diagnostics_get_descriptor%published_fields(27)="rain_mmr_total_local"
     profile_diagnostics_get_descriptor%published_fields(28)="ice_mmr_total_local"
@@ -120,7 +120,7 @@ contains
 !   =====================================================
 !   2nd, provisionally instantaneous, stream
     profile_diagnostics_get_descriptor%published_fields(42+1)="i_theta_total_local"
-    profile_diagnostics_get_descriptor%published_fields(42+2)="i_vapour_mmr_total_local"
+    profile_diagnostics_get_descriptor%published_fields(42+2)="i_total_mmr_total_local"
     profile_diagnostics_get_descriptor%published_fields(42+3)="i_liquid_mmr_total_local"
     profile_diagnostics_get_descriptor%published_fields(42+4)="i_u_wind_total_local"
     profile_diagnostics_get_descriptor%published_fields(42+5)="i_uu_total_local"
@@ -612,7 +612,7 @@ contains
             ng_tot(:) = ng_tot(:) + (current_state%q(ing)%data(:,jcol,icol))
        !
        ! moisture field fluxes
-       ! vapour
+       ! total
        call calculate_wq(current_state, jcol, icol, iqv, wqv_cn_tot, wqv_ad_tot, advect_q)
        ! cloud liquid
        call calculate_wq(current_state, jcol, icol, iql , wql_cn_tot, wql_ad_tot, advect_q)
@@ -659,7 +659,7 @@ contains
     field_information%data_type=COMPONENT_DOUBLE_DATA_TYPE
     if (name .eq. "theta_total_local") then
       field_information%enabled=current_state%th%active
-    else if (name .eq. "vapour_mmr_total_local" .or. name .eq. "liquid_mmr_total_local" &
+    else if (name .eq. "total_mmr_total_local" .or. name .eq. "liquid_mmr_total_local" &
          .or. name .eq. "wqv_ad_total_local" .or. name .eq. "wqv_cn_total_local"        &
          .or. name .eq. "wql_ad_total_local" .or. name .eq. "wql_cn_total_local" ) then
        field_information%enabled=.not. current_state%passive_q .and. current_state%number_q_fields .gt. 0
@@ -690,7 +690,7 @@ contains
 !   2nd stream
     else if (name .eq. "i_theta_total_local") then
       field_information%enabled=current_state%th%active
-    else if (name .eq. "i_vapour_mmr_total_local" .or. name .eq. "i_liquid_mmr_total_local") then
+    else if (name .eq. "i_total_mmr_total_local" .or. name .eq. "i_liquid_mmr_total_local") then
        field_information%enabled=.not. current_state%passive_q .and. current_state%number_q_fields .gt. 0
     else if (name .eq. "i_rain_mmr_total_local" ) then
        field_information%enabled= current_state%rain_water_mixing_ratio_index .gt. 0
@@ -817,7 +817,7 @@ contains
        do k = 1, current_state%local_grid%size(Z_INDEX)
           field_value%real_1d_array(k)=theta_tot(k)
        enddo
-    else if (name .eq. "vapour_mmr_total_local") then
+    else if (name .eq. "total_mmr_total_local") then
        allocate(field_value%real_1d_array(current_state%local_grid%size(Z_INDEX)))
        do k = 1, current_state%local_grid%size(Z_INDEX)
           field_value%real_1d_array(k)=qv_tot(k)
@@ -1044,7 +1044,7 @@ contains
        do k = 1, current_state%local_grid%size(Z_INDEX)
           field_value%real_1d_array(k)=theta_tot(k)
        enddo
-    else if (name .eq. "i_vapour_mmr_total_local") then
+    else if (name .eq. "i_total_mmr_total_local") then
        allocate(field_value%real_1d_array(current_state%local_grid%size(Z_INDEX)))
        do k = 1, current_state%local_grid%size(Z_INDEX)
           field_value%real_1d_array(k)=qv_tot(k)

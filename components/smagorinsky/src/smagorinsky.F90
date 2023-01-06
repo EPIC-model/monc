@@ -213,11 +213,7 @@ contains
 
     if (.not. current_state%passive_th) then
       if (.not. current_state%passive_q) then
-        if (RICHARDSON_NUMBER_CALCULATION .eq. 2) then
-          calculate_richardson_number=moist_ri_2(current_state, ssq, th, q)
-        else
-          calculate_richardson_number=moist_ri_1(current_state, ssq, th, q)
-        end if
+        calculate_richardson_number=moist_ri_3(current_state, ssq, th, q)
       else
         do k=2, current_state%local_grid%size(Z_INDEX)-1
           calculate_richardson_number(k) = (current_state%global_grid%configuration%vertical%dthref(k) + &
@@ -231,6 +227,31 @@ contains
       calculate_richardson_number=0.0_DEFAULT_PRECISION        
     end if
   end function calculate_richardson_number
+
+  function moist_ri_3(current_state, ssq, th, q)
+    type(model_state_type), target, intent(inout) :: current_state
+    real(kind=DEFAULT_PRECISION), dimension(:), intent(in) :: ssq
+    type(prognostic_field_type), intent(inout) :: th
+    type(prognostic_field_type), dimension(:), intent(inout) :: q
+    real(kind=DEFAULT_PRECISION), dimension(current_state%local_grid%size(Z_INDEX)) :: moist_ri_3
+    real(kind=DEFAULT_PRECISION) :: b_m=12.5_DEFAULT_PRECISION
+    integer :: k
+    real(kind=DEFAULT_PRECISION) :: tmpinv, qt_k, scltmp
+    do K=2,current_state%local_grid%size(Z_INDEX)-1
+      tmpinv = 1.0_DEFAULT_PRECISION/ssq(k)
+      qt_k = 0.5_DEFAULT_PRECISION*(q(current_state%water_vapour_mixing_ratio_index)%data(&
+           k, current_state%column_local_y, current_state%column_local_x)+ &
+             q(current_state%water_vapour_mixing_ratio_index)%data(&
+           k+1, current_state%column_local_y, current_state%column_local_x))
+      scltmp=th%data(k+1, current_state%column_local_y, current_state%column_local_x)-&
+             th%data(k, current_state%column_local_y, current_state%column_local_x)
+      ! saturated
+      if(qt_k>exp(-current_state%global_grid%configuration%vertical%z(k))) then
+        scltmp=scltmp-b_m*exp(-current_state%global_grid%configuration%vertical%z(k))
+      end if
+      moist_ri_3(k) = scltmp*tmpinv*current_state%global_grid%configuration%vertical%rdzn(k+1)
+    end do
+  end function moist_ri_3
 
   !> Calculates another "moist version" of the Richardson number based on "change in subgrid buoyancy flux 
   !! when a fraction EPS is exchanged"

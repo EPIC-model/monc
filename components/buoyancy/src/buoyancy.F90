@@ -17,7 +17,7 @@ implicit none
 #endif
   real(kind=DEFAULT_PRECISION), dimension(:), allocatable :: w_buoyancy
 
-  real(kind=DEFAULT_PRECISION) :: G_over_2
+  real(kind=DEFAULT_PRECISION) :: b_m
 
   integer :: iqv ! Index for water vapour
 
@@ -148,7 +148,7 @@ contains
       current_state%cq(iqv) = ratio_mol_wts-1.0
     end if
 
-    G_over_2 = 0.5_DEFAULT_PRECISION*G
+    b_m = 12.5_DEFAULT_PRECISION
     z_size=current_state%global_grid%size(Z_INDEX)
     allocate(w_buoyancy(z_size))
 
@@ -213,39 +213,22 @@ contains
         call save_precomponent_tendencies(current_state, current_x_index, current_y_index, target_x_index, target_y_index)
     
 #ifdef W_ACTIVE
-    if (.not. current_state%passive_th .and. current_state%th%active) then
-      do k=2,current_state%local_grid%size(Z_INDEX)-1    
-        w_buoyancy(k)=(0.5_DEFAULT_PRECISION*current_state%global_grid%configuration%vertical%buoy_co(k))*&
-             (current_state%th%data(k, current_state%column_local_y, current_state%column_local_x)&
-             +current_state%th%data(k+1, current_state%column_local_y, current_state%column_local_x))
-        current_state%sw%data(k, current_state%column_local_y, current_state%column_local_x)=&
-             current_state%sw%data(k, current_state%column_local_y, current_state%column_local_x)+w_buoyancy(k)             
-      end do
-    end if
+    do k=2,current_state%local_grid%size(Z_INDEX)-1
+      w_buoyancy(k)=0.5_DEFAULT_PRECISION*(current_state%th%data(k, current_state%column_local_y, current_state%column_local_x)&
+           +current_state%th%data(k+1, current_state%column_local_y, current_state%column_local_x))
+      current_state%sw%data(k, current_state%column_local_y, current_state%column_local_x)=&
+           current_state%sw%data(k, current_state%column_local_y, current_state%column_local_x)+w_buoyancy(k)
+    end do
     if (.not. current_state%passive_q .and. current_state%number_q_fields .gt. 0) then
-      if (current_state%use_anelastic_equations) then                                                      
-        do n=1,current_state%number_q_fields
-          do k=2,current_state%local_grid%size(Z_INDEX)-1            
-            current_state%sw%data(k, current_state%column_local_y, current_state%column_local_x)=&
-                 current_state%sw%data(k, current_state%column_local_y, current_state%column_local_x)+&
-                 (0.5_DEFAULT_PRECISION*current_state%global_grid%configuration%vertical%buoy_co(k))*&
-                 current_state%cq(n)* (current_state%global_grid%configuration%vertical%thref(k)*&
-                 current_state%q(n)%data(k, current_state%column_local_y, current_state%column_local_x)+&
-                 current_state%global_grid%configuration%vertical%thref(k+1)*&
-                 current_state%q(n)%data(k+1, current_state%column_local_y, current_state%column_local_x))
-          end do
-        end do
-      else                                                                     
-        do n=1,current_state%number_q_fields
-          do k=2,current_state%local_grid%size(Z_INDEX)-1
-             current_state%sw%data(k, current_state%column_local_y, current_state%column_local_x)=&
-                  current_state%sw%data(k, current_state%column_local_y, current_state%column_local_x)+&
-                  G_over_2*current_state%cq(n)*&
-                  (current_state%q(n)%data(k, current_state%column_local_y, current_state%column_local_x)+&
-                  current_state%q(n)%data(k+1, current_state%column_local_y, current_state%column_local_x))
-          end do
-        end do
-      end if
+      do k=2,current_state%local_grid%size(Z_INDEX)-1
+        current_state%sw%data(k, current_state%column_local_y, current_state%column_local_x)=&
+        current_state%sw%data(k, current_state%column_local_y, current_state%column_local_x)+&
+        0.5*b_m*(&
+          max(current_state%q(1)%data(k, current_state%column_local_y, current_state%column_local_x)-&
+            exp(-current_state%global_grid%configuration%vertical%zn(k)),0.0_DEFAULT_PRECISION)+&
+          max(current_state%q(1)%data(k+1, current_state%column_local_y, current_state%column_local_x)-&
+            exp(-current_state%global_grid%configuration%vertical%zn(k+1)),0.0_DEFAULT_PRECISION))
+      end do
     end if
 #endif
 

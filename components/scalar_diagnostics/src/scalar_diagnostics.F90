@@ -22,7 +22,7 @@ module scalar_diagnostics_mod
   real(kind=DEFAULT_PRECISION), dimension(:), allocatable :: ww_prime_res, uu_prime_res, &
        vv_prime_res, cloud_content
   real(kind=DEFAULT_PRECISION) :: qlcrit
-  real(kind=DEFAULT_PRECISION), dimension(:,:), allocatable :: vwp, lwp, wmax, wmin, &
+  real(kind=DEFAULT_PRECISION), dimension(:,:), allocatable :: twp, lwp, wmax, wmin, &
        qlmax, hqlmax, cltop, clbas,  senhf, lathf, rwp, iwp, swp, gwp, tot_iwp,      &
        reske
   real(kind=DEFAULT_PRECISION), dimension(:,:,:), allocatable :: trsfflux
@@ -44,7 +44,7 @@ contains
     scalar_diagnostics_get_descriptor%field_information_retrieval=>field_information_retrieval_callback
     allocate(scalar_diagnostics_get_descriptor%published_fields(17))
 
-    scalar_diagnostics_get_descriptor%published_fields(1)="vwp"
+    scalar_diagnostics_get_descriptor%published_fields(1)="twp"
     scalar_diagnostics_get_descriptor%published_fields(2)="lwp"
     scalar_diagnostics_get_descriptor%published_fields(3)="qlmax"
     scalar_diagnostics_get_descriptor%published_fields(4)="hqlmax"
@@ -93,7 +93,7 @@ contains
     if (.not. current_state%passive_q .and. current_state%number_q_fields .gt. 0) then
        iqv = current_state%water_vapour_mixing_ratio_index
        iql = current_state%liquid_water_mixing_ratio_index
-       allocate(vwp(y_size_local, x_size_local), lwp(y_size_local, x_size_local), &
+       allocate(twp(y_size_local, x_size_local), lwp(y_size_local, x_size_local), &
             qlmax(y_size_local, x_size_local), hqlmax(y_size_local, x_size_local), &
             cltop(y_size_local, x_size_local), clbas(y_size_local, x_size_local))
        allocate(cloud_content(current_state%local_grid%size(Z_INDEX)))
@@ -163,7 +163,7 @@ contains
           ! minimum cloud base where liquid water content is greater than qlcrit
           clbas(:,:)=0.0
           ! water vapour path for each column
-          vwp(:,:)=0.0
+          twp(:,:)=0.0
           ! liquid water path for each column
           lwp(:,:)=0.0
           ! rain water path for each column
@@ -268,7 +268,7 @@ contains
           if (current_state%water_vapour_mixing_ratio_index .gt. 0 .and. &
                current_state%number_q_fields .ge. current_state%water_vapour_mixing_ratio_index) then
              do k = 2, current_state%local_grid%size(Z_INDEX)
-                vwp(target_y_index, target_x_index)=vwp(target_y_index, target_x_index) &
+                twp(target_y_index, target_x_index)=twp(target_y_index, target_x_index) &
                      +dz_rhon_fac(k)*current_state%q(current_state%water_vapour_mixing_ratio_index)%data(k, &
                      current_y_index, current_x_index)
                 lwp(target_y_index, target_x_index)=lwp(target_y_index, target_x_index) &
@@ -394,7 +394,7 @@ contains
       else if (name .eq. "qlmax".or. name .eq. "cltop" .or. name .eq. "clbas") then
         field_information%enabled=.not. current_state%passive_q .and. current_state%liquid_water_mixing_ratio_index .gt. 0 &
            .and. current_state%number_q_fields .ge. current_state%liquid_water_mixing_ratio_index
-      else if (name .eq. "vwp" .or. name .eq. "lwp") then
+      else if (name .eq. "twp" .or. name .eq. "lwp") then
         field_information%enabled= &
             current_state%number_q_fields .gt. 0 .and. current_state%water_vapour_mixing_ratio_index .gt. 0 &
            .and. current_state%number_q_fields .ge. current_state%water_vapour_mixing_ratio_index
@@ -452,10 +452,10 @@ contains
        allocate(field_value%real_2d_array(current_state%local_grid%size(Y_INDEX), &
            current_state%local_grid%size(X_INDEX))) 
        field_value%real_2d_array(:,:)=clbas(:,:)
-    else if (name .eq. "vwp") then
+    else if (name .eq. "twp") then
        allocate(field_value%real_2d_array(current_state%local_grid%size(Y_INDEX), &
            current_state%local_grid%size(X_INDEX))) 
-       field_value%real_2d_array(:,:)=vwp(:,:)
+       field_value%real_2d_array(:,:)=twp(:,:)
     else if (name .eq. "lwp") then
        allocate(field_value%real_2d_array(current_state%local_grid%size(Y_INDEX), &
            current_state%local_grid%size(X_INDEX))) 
