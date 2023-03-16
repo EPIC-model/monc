@@ -193,7 +193,7 @@ contains
                     jloc .ge. current_state%local_grid%local_domain_start_index(Y_INDEX) .and. &
                     jloc .le. current_state%local_grid%local_domain_end_index(Y_INDEX) ) then
   
-                  current_state%q(iq)%data(k,j,i) = current_state%q(iq)%data(k,j,i) + &
+                  current_state%q(iq)%data(k,jloc,iloc) = current_state%q(iq)%data(k,jloc,iloc) + &
                        current_state%global_grid%configuration%vertical%q_rand(k,iq) * 2.0 * (random_num-0.5)
                 end if ! in local space?
               end do ! k
@@ -253,7 +253,7 @@ contains
                   iloc .le. current_state%local_grid%local_domain_end_index(X_INDEX)   .and. &
                   jloc .ge. current_state%local_grid%local_domain_start_index(Y_INDEX) .and. &
                   jloc .le. current_state%local_grid%local_domain_end_index(Y_INDEX) ) then
-                current_state%w%data(k,j,i) = current_state%w%data(k,j,i) + &
+                current_state%w%data(k,jloc,iloc) = current_state%w%data(k,jloc,iloc) + &
                    current_state%global_grid%configuration%vertical%w_rand(k) * (random_num-0.5)
 
               end if ! in local space?
